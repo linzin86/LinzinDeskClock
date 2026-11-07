@@ -423,8 +423,10 @@ fun formatTemp(celsius: Float, isFahrenheit: Boolean): String {
 // 3. 防烙印 Shader 修飾符
 // ==========================================
 
+val isBurnInProtectionSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+
 fun Modifier.checkerboardBurnInProtection(isIdle: Boolean): Modifier = composed {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+    if (!isBurnInProtectionSupported) {
         return@composed this
     }
 
@@ -468,7 +470,8 @@ fun Modifier.checkerboardBurnInProtection(isIdle: Boolean): Modifier = composed 
             renderEffect = RenderEffect
                 .createRuntimeShaderEffect(shader, "composable")
                 .asComposeRenderEffect()
-        } catch (e: Throwable) {
+        } catch (e: Exception) {
+            Log.e("DeskClockBurnIn", "Burn-in shader failed", e)
             renderEffect = null
         }
     }
@@ -2019,12 +2022,16 @@ fun ClockSettingsDialog(
 
                     Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF33333A)))
 
-                    // 6. 防烙印開關
+                    // 6. 防烙印開關 (RuntimeShader 需 Android 13 以上)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
-                            .clickable { onBurnInProtectionChange(!burnInProtectionEnabled) }
+                            .then(
+                                if (isBurnInProtectionSupported) {
+                                    Modifier.clickable { onBurnInProtectionChange(!burnInProtectionEnabled) }
+                                } else Modifier
+                            )
                             .padding(vertical = 12.dp, horizontal = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
@@ -2034,17 +2041,22 @@ fun ClockSettingsDialog(
                                 text = stringResource(R.string.pref_burn_in_title),
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = Color.White
+                                color = if (isBurnInProtectionSupported) Color.White else Color(0xFF6E6E78)
                             )
                             Text(
-                                text = stringResource(R.string.pref_burn_in_desc),
+                                text = if (isBurnInProtectionSupported) {
+                                    stringResource(R.string.pref_burn_in_desc)
+                                } else {
+                                    stringResource(R.string.pref_burn_in_unsupported)
+                                },
                                 fontSize = 13.sp,
-                                color = Color.Gray
+                                color = if (isBurnInProtectionSupported) Color.Gray else Color(0xFFE57373)
                             )
                         }
                         Switch(
-                            checked = burnInProtectionEnabled,
-                            onCheckedChange = null
+                            checked = if (isBurnInProtectionSupported) burnInProtectionEnabled else false,
+                            onCheckedChange = null,
+                            enabled = isBurnInProtectionSupported
                         )
                     }
 

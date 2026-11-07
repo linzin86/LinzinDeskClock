@@ -3514,6 +3514,68 @@ fun SideWeatherWidget(
 // 9. 錶盤實作 (數位、指針、翻頁時鐘)
 // ==========================================
 
+/**
+ * 錶盤手勢：雙指輕點切換樣式、單指雙擊切換秒數（鎖定時忽略）
+ */
+fun Modifier.clockFaceTaps(
+    isUiLocked: Boolean,
+    onTwoFingerTap: () -> Unit,
+    onDoubleTap: () -> Unit
+): Modifier = pointerInput(isUiLocked) {
+    awaitPointerEventScope {
+        var lastSingleTapTime = 0L
+
+        while (true) {
+            val downEvent = awaitPointerEvent(PointerEventPass.Main)
+            val hasNewDown = downEvent.changes.any { it.pressed && !it.previousPressed }
+            if (!hasNewDown) continue
+
+            val startTime = System.currentTimeMillis()
+            var maxPointers = downEvent.changes.count { it.pressed }
+            var movedTooMuch = false
+
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Main)
+                val activePointers = event.changes.count { it.pressed }
+                if (activePointers > maxPointers) {
+                    maxPointers = activePointers
+                }
+
+                if (event.changes.any {
+                        val dx = it.position.x - it.previousPosition.x
+                        val dy = it.position.y - it.previousPosition.y
+                        (dx * dx + dy * dy) > 1200f
+                    }) {
+                    movedTooMuch = true
+                }
+
+                if (event.changes.none { it.pressed }) break
+                if (System.currentTimeMillis() - startTime > 450L) break
+            }
+
+            val elapsed = System.currentTimeMillis() - startTime
+
+            if (!isUiLocked && !movedTooMuch && elapsed in 30L..450L) {
+                when (maxPointers) {
+                    2 -> {
+                        onTwoFingerTap()
+                        lastSingleTapTime = 0L
+                    }
+                    1 -> {
+                        val now = System.currentTimeMillis()
+                        if (now - lastSingleTapTime < 320L) {
+                            onDoubleTap()
+                            lastSingleTapTime = 0L
+                        } else {
+                            lastSingleTapTime = now
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 fun getDigitalDigitDrawable(char: Char, stylePrefix: String): Int? {
     return when (stylePrefix) {
         "tk" -> when (char) {
@@ -3637,62 +3699,17 @@ fun DigitalClockFace(
             .fillMaxSize()
             .background(Color.Black)
             .padding(horizontal = 24.dp, vertical = 20.dp)
-            .pointerInput(availableStyles, isUiLocked) {
-                awaitPointerEventScope {
-                    var lastSingleTapTime = 0L
-
-                    while (true) {
-                        val downEvent = awaitPointerEvent(PointerEventPass.Main)
-                        val hasNewDown = downEvent.changes.any { it.pressed && !it.previousPressed }
-                        if (!hasNewDown) continue
-
-                        val startTime = System.currentTimeMillis()
-                        var maxPointers = downEvent.changes.count { it.pressed }
-                        var movedTooMuch = false
-
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Main)
-                            val activePointers = event.changes.count { it.pressed }
-                            if (activePointers > maxPointers) {
-                                maxPointers = activePointers
-                            }
-
-                            if (event.changes.any {
-                                    val dx = it.position.x - it.previousPosition.x
-                                    val dy = it.position.y - it.previousPosition.y
-                                    (dx * dx + dy * dy) > 1200f
-                                }) {
-                                movedTooMuch = true
-                            }
-
-                            if (event.changes.none { it.pressed }) break
-                            if (System.currentTimeMillis() - startTime > 450L) break
-                        }
-
-                        val elapsed = System.currentTimeMillis() - startTime
-
-                        if (!isUiLocked && !movedTooMuch && elapsed in 30L..450L) {
-                            when (maxPointers) {
-                                2 -> {
-                                    currentStyleIndex = (currentStyleIndex + 1) % availableStyles.size
-                                    prefs.edit().putInt("pref_digital_style_idx", currentStyleIndex).apply()
-                                    lastSingleTapTime = 0L
-                                }
-                                1 -> {
-                                    val now = System.currentTimeMillis()
-                                    if (now - lastSingleTapTime < 320L) {
-                                        showSeconds = !showSeconds
-                                        prefs.edit().putBoolean("pref_digital_show_sec", showSeconds).apply()
-                                        lastSingleTapTime = 0L
-                                    } else {
-                                        lastSingleTapTime = now
-                                    }
-                                }
-                            }
-                        }
-                    }
+            .clockFaceTaps(
+                isUiLocked = isUiLocked,
+                onTwoFingerTap = {
+                    currentStyleIndex = (currentStyleIndex + 1) % availableStyles.size
+                    prefs.edit().putInt("pref_digital_style_idx", currentStyleIndex).apply()
+                },
+                onDoubleTap = {
+                    showSeconds = !showSeconds
+                    prefs.edit().putBoolean("pref_digital_show_sec", showSeconds).apply()
                 }
-            }
+            )
     ) {
         val heightBasedSize = maxHeight * 0.70f
 
@@ -3852,61 +3869,17 @@ fun AnalogClockFace(
         modifier = modifier
             .fillMaxSize()
             .background(currentBgColor)
-            .pointerInput(isUiLocked) {
-                awaitPointerEventScope {
-                    var lastSingleTapTime = 0L
-
-                    while (true) {
-                        val downEvent = awaitPointerEvent(PointerEventPass.Main)
-                        val hasNewDown = downEvent.changes.any { it.pressed && !it.previousPressed }
-                        if (!hasNewDown) continue
-
-                        val startTime = System.currentTimeMillis()
-                        var maxPointers = downEvent.changes.count { it.pressed }
-                        var movedTooMuch = false
-
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Main)
-                            val activePointers = event.changes.count { it.pressed }
-                            if (activePointers > maxPointers) {
-                                maxPointers = activePointers
-                            }
-
-                            if (event.changes.any {
-                                    val dx = it.position.x - it.previousPosition.x
-                                    val dy = it.position.y - it.previousPosition.y
-                                    (dx * dx + dy * dy) > 1200f
-                                }) {
-                                movedTooMuch = true
-                            }
-
-                            if (event.changes.none { it.pressed }) break
-                            if (System.currentTimeMillis() - startTime > 450L) break
-                        }
-
-                        val elapsed = System.currentTimeMillis() - startTime
-                        if (!isUiLocked && !movedTooMuch && elapsed in 30L..450L) {
-                            when (maxPointers) {
-                                2 -> {
-                                    analogStyleIndex = (analogStyleIndex + 1) % 3
-                                    prefs.edit().putInt("pref_analog_style_idx", analogStyleIndex).apply()
-                                    lastSingleTapTime = 0L
-                                }
-                                1 -> {
-                                    val now = System.currentTimeMillis()
-                                    if (now - lastSingleTapTime < 320L) {
-                                        showSeconds = !showSeconds
-                                        prefs.edit().putBoolean("pref_analog_show_sec", showSeconds).apply()
-                                        lastSingleTapTime = 0L
-                                    } else {
-                                        lastSingleTapTime = now
-                                    }
-                                }
-                            }
-                        }
-                    }
+            .clockFaceTaps(
+                isUiLocked = isUiLocked,
+                onTwoFingerTap = {
+                    analogStyleIndex = (analogStyleIndex + 1) % 3
+                    prefs.edit().putInt("pref_analog_style_idx", analogStyleIndex).apply()
+                },
+                onDoubleTap = {
+                    showSeconds = !showSeconds
+                    prefs.edit().putBoolean("pref_analog_show_sec", showSeconds).apply()
                 }
-            }
+            )
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val width = size.width
@@ -4601,62 +4574,17 @@ fun FlipClockFace(
             .fillMaxSize()
             .background(Color.Black)
             .padding(horizontal = 20.dp, vertical = 12.dp)
-            .pointerInput(availableStyles, isUiLocked) {
-                awaitPointerEventScope {
-                    var lastSingleTapTime = 0L
-
-                    while (true) {
-                        val downEvent = awaitPointerEvent(PointerEventPass.Main)
-                        val hasNewDown = downEvent.changes.any { it.pressed && !it.previousPressed }
-                        if (!hasNewDown) continue
-
-                        val startTime = System.currentTimeMillis()
-                        var maxPointers = downEvent.changes.count { it.pressed }
-                        var movedTooMuch = false
-
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Main)
-                            val activePointers = event.changes.count { it.pressed }
-                            if (activePointers > maxPointers) {
-                                maxPointers = activePointers
-                            }
-
-                            if (event.changes.any {
-                                    val dx = it.position.x - it.previousPosition.x
-                                    val dy = it.position.y - it.previousPosition.y
-                                    (dx * dx + dy * dy) > 1200f
-                                }) {
-                                movedTooMuch = true
-                            }
-
-                            if (event.changes.none { it.pressed }) break
-                            if (System.currentTimeMillis() - startTime > 450L) break
-                        }
-
-                        val elapsed = System.currentTimeMillis() - startTime
-
-                        if (!isUiLocked && !movedTooMuch && elapsed in 30L..450L) {
-                            when (maxPointers) {
-                                2 -> {
-                                    currentStyleIndex = (currentStyleIndex + 1) % availableStyles.size
-                                    prefs.edit().putInt("pref_flip_style_idx", currentStyleIndex).apply()
-                                    lastSingleTapTime = 0L
-                                }
-                                1 -> {
-                                    val now = System.currentTimeMillis()
-                                    if (now - lastSingleTapTime < 320L) {
-                                        showSeconds = !showSeconds
-                                        prefs.edit().putBoolean("pref_flip_show_sec", showSeconds).apply()
-                                        lastSingleTapTime = 0L
-                                    } else {
-                                        lastSingleTapTime = now
-                                    }
-                                }
-                            }
-                        }
-                    }
+            .clockFaceTaps(
+                isUiLocked = isUiLocked,
+                onTwoFingerTap = {
+                    currentStyleIndex = (currentStyleIndex + 1) % availableStyles.size
+                    prefs.edit().putInt("pref_flip_style_idx", currentStyleIndex).apply()
+                },
+                onDoubleTap = {
+                    showSeconds = !showSeconds
+                    prefs.edit().putBoolean("pref_flip_show_sec", showSeconds).apply()
                 }
-            }
+            )
     ) {
         val targetWidth = maxWidth * 0.85f
 

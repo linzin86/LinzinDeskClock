@@ -2500,7 +2500,6 @@ fun InitialScreen(
 @Composable
 fun DeskClockScreen(
     foldState: String = "--°",
-    targetStateId: String = "3",
     hasHingeSensor: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -4790,7 +4789,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     private var hasHingeSensor = false
-    private var isClamshell = false
     private var lastRecordedHingeAngle: Float = -1f
     private var isNonFoldableBypassed = false
 
@@ -4818,14 +4816,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         window.navigationBarColor = AndroidGraphicsColor.BLACK
 
         // 允許畫面延伸至挖孔/瀏海區域
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            window.attributes = window.attributes.apply {
-                layoutInDisplayCutoutMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
-                } else {
-                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-                }
-            }
+        window.attributes = window.attributes.apply {
+            layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
         }
 
         sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
@@ -4866,13 +4858,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 if (showClockScreen) {
                     DeskClockScreen(
                         foldState = foldState,
-                        targetStateId = targetStateId,
                         hasHingeSensor = hasHingeSensor
                     )
                 } else {
                     InitialScreen(
                         hasHingeSensor = hasHingeSensor,
-                        isClamshell = isClamshell || (hasHingeSensor && isTallAspectRatio() && lastRecordedHingeAngle >= 160f),
+                        isClamshell = (hasHingeSensor && isTallAspectRatio() && lastRecordedHingeAngle >= 160f),
                         onEnterClockDirectly = {
                             isNonFoldableBypassed = true
                             showClockScreen = true
@@ -4956,7 +4947,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             lastRecordedHingeAngle = currentAngle
             foldState = "${currentAngle.toInt()}°"
 
-            if (isClamshell || isNonFoldableBypassed) {
+            if (isNonFoldableBypassed) {
                 return
             }
 
@@ -4992,11 +4983,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     showClockScreen = true
                     requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
 
-                    val needsStateOverride = !isTallAspectRatio() || !isRearDisplayActive
-                    if (needsStateOverride) {
-                        isRearDisplayActive = true
-                        executeShellCommand("cmd device_state state $targetStateId")
-                    }
+                    isRearDisplayActive = true
+                    executeShellCommand("cmd device_state state $targetStateId")
 
                     triggerImmersiveCleanUp()
                 }

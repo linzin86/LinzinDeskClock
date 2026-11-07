@@ -489,38 +489,27 @@ fun rememberBatteryState(): BatteryState {
     DisposableEffect(context) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(c: Context?, intent: Intent?) {
-                intent?.let {
-                    val level = it.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-                    val scale = it.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
-                    val status = it.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
-                    val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                            status == BatteryManager.BATTERY_STATUS_FULL
-                    val pct = if (level >= 0 && scale > 0) (level * 100 / scale) else 100
-                    batteryState = BatteryState(level = pct, isCharging = isCharging)
-                }
+                intent?.let { batteryState = batteryStateFrom(it) }
             }
         }
-        val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-        val stickyIntent = context.registerReceiver(receiver, filter)
-        stickyIntent?.let { intent ->
-            val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-            val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
-            val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
-            val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                    status == BatteryManager.BATTERY_STATUS_FULL
-            val pct = if (level >= 0 && scale > 0) (level * 100 / scale) else 100
-            batteryState = BatteryState(level = pct, isCharging = isCharging)
-        }
+        // 黏性廣播會同步回傳目前狀態，先套用以免第一個畫面顯示預設值
+        context.registerReceiver(receiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            ?.let { batteryState = batteryStateFrom(it) }
 
-        onDispose {
-            try {
-                context.unregisterReceiver(receiver)
-            } catch (e: Exception) {
-                // Ignore
-            }
-        }
+        onDispose { context.unregisterReceiver(receiver) }
     }
     return batteryState
+}
+
+private fun batteryStateFrom(intent: Intent): BatteryState {
+    val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+    val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+    val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+    return BatteryState(
+        level = if (level >= 0 && scale > 0) (level * 100 / scale) else 100,
+        isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+            status == BatteryManager.BATTERY_STATUS_FULL
+    )
 }
 
 @Composable

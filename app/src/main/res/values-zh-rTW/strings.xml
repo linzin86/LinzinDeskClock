@@ -75,6 +75,7 @@
     <!-- 設定對話框：螢幕防護、亮度與休眠控制 -->
     <string name="pref_burn_in_title">螢幕防烙印機制</string>
     <string name="pref_burn_in_desc">定時微幅抖動畫面像素以保護 OLED 螢幕 (預設開啟)</string>
+    <string name="pref_burn_in_unsupported">需要 Android 13 以上版本</string>
     <string name="pref_brightness_title">手動調整亮度</string>
     <string name="pref_brightness_desc_manual">自訂視窗亮度</string>
     <string name="pref_brightness_desc_auto">跟隨系統自動設定</string>

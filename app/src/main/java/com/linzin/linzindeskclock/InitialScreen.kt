@@ -177,7 +177,7 @@ fun InitialScreen(
                     }
                 }
             } else {
-                // 自適應單一垂直容器：防止方塊比例內螢幕文字與按鈕重疊
+                // 自動調整的單一垂直容器：防止方塊比例內螢幕文字與按鈕重疊
                 Column(
                     modifier = Modifier
                         .fillMaxSize()

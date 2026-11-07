@@ -1224,7 +1224,7 @@ fun ClockSettingsDialog(
 
                     Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF33333A)))
 
-                    // 9. 查看手勢操作指南
+                    // 9. 檢視手勢操作指南
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()

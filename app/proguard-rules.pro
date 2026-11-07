@@ -1,4 +1,4 @@
-# 1. 保留 Kotlin 標準庫核心與集合
+# 1. 保留 Kotlin 標準函式庫核心與集合
 -keep class kotlin.** { *; }
 -keep interface kotlin.** { *; }
 -dontwarn kotlin.**

@@ -46,7 +46,7 @@ private val DeskClockColorScheme = darkColorScheme(
 )
 
 /**
- * 非同步發送 Shell 指令至系統（如調用 cmd device_state）
+ * 非同步傳送 Shell 指令至系統（如呼叫 cmd device_state）
  */
 fun executeShellCommand(command: String) {
     CoroutineScope(Dispatchers.IO).launch {
@@ -62,7 +62,7 @@ fun executeShellCommand(command: String) {
 
 class MainActivity : ComponentActivity(), SensorEventListener {
 
-    // 各品牌外螢幕狀態 ID 適配
+    // 各品牌外螢幕狀態 ID 對應
     private val targetStateId: String by lazy {
         val brand = Build.MANUFACTURER.lowercase()
         when {
@@ -241,7 +241,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
         }
 
-        // 從後台切回 APP 時，若正在時鐘介面，重新恢復全螢幕沉浸模式
+        // 從背景切回 APP 時，若正在時鐘介面，重新恢復全螢幕沉浸模式
         if (showClockScreen) {
             setImmersiveMode(window, true)
             if (isPermanentBypass()) {
@@ -252,7 +252,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        // 只要視窗重新拿到焦點 (從桌面切回、手勢動畫結束等)，且處於時鐘畫面，就強制壓下狀態欄
+        // 只要視窗重新拿到焦點 (從桌面切回、手勢動畫結束等)，且處於時鐘畫面，就強制壓下狀態列
         if (hasFocus && showClockScreen) {
             setImmersiveMode(window, true)
         }
@@ -270,7 +270,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         super.onStop()
         sensorManager.unregisterListener(this)
 
-        // 如果是已永久放行的非摺疊機，按 Home 鍵退回後台時，不要重置 showClockScreen
+        // 如果是已永久放行的非摺疊機，按 Home 鍵退回背景時，不要重置 showClockScreen
         if (isPermanentBypass()) {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             setImmersiveMode(window, false)

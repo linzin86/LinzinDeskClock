@@ -152,6 +152,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.runtime.rememberCoroutineScope
 import android.os.CancellationSignal
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -969,6 +970,15 @@ fun MaterialWeatherIcon(
     }
 }
 
+/** 裝置沒有可開啟連結的 App 時不閃退 */
+fun UriHandler.openUriSafely(url: String) {
+    try {
+        openUri(url)
+    } catch (e: Exception) {
+        Log.w("DeskClock", "No app can open $url", e)
+    }
+}
+
 @Composable
 fun SocialMediaButton(
     iconRes: Int,
@@ -1571,7 +1581,7 @@ fun NonFoldableDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Surface(
-                        onClick = { uriHandler.openUri(youtubeUrl) },
+                        onClick = { uriHandler.openUriSafely(youtubeUrl) },
                         shape = CircleShape,
                         color = Color(0xFF2C2C34),
                         modifier = Modifier.size(50.dp)
@@ -1587,7 +1597,7 @@ fun NonFoldableDialog(
                     }
 
                     Surface(
-                        onClick = { uriHandler.openUri(bilibiliUrl) },
+                        onClick = { uriHandler.openUriSafely(bilibiliUrl) },
                         shape = CircleShape,
                         color = Color(0xFF2C2C34),
                         modifier = Modifier.size(50.dp)
@@ -2369,19 +2379,19 @@ fun InitialScreen(
                         ) {
                             SocialMediaButton(
                                 iconRes = R.drawable.ic_youtube,
-                                onClick = { uriHandler.openUri(youtubeUrl) }
+                                onClick = { uriHandler.openUriSafely(youtubeUrl) }
                             )
                             SocialMediaButton(
                                 iconRes = R.drawable.ic_facebook,
-                                onClick = { uriHandler.openUri(facebookUrl) }
+                                onClick = { uriHandler.openUriSafely(facebookUrl) }
                             )
                             SocialMediaButton(
                                 iconRes = R.drawable.ic_instagram,
-                                onClick = { uriHandler.openUri(instagramUrl) }
+                                onClick = { uriHandler.openUriSafely(instagramUrl) }
                             )
                             SocialMediaButton(
                                 iconRes = R.drawable.ic_github,
-                                onClick = { uriHandler.openUri(githubUrl) }
+                                onClick = { uriHandler.openUriSafely(githubUrl) }
                             )
                         }
                     }
@@ -2456,19 +2466,19 @@ fun InitialScreen(
                         ) {
                             SocialMediaButton(
                                 iconRes = R.drawable.ic_youtube,
-                                onClick = { uriHandler.openUri(youtubeUrl) }
+                                onClick = { uriHandler.openUriSafely(youtubeUrl) }
                             )
                             SocialMediaButton(
                                 iconRes = R.drawable.ic_facebook,
-                                onClick = { uriHandler.openUri(facebookUrl) }
+                                onClick = { uriHandler.openUriSafely(facebookUrl) }
                             )
                             SocialMediaButton(
                                 iconRes = R.drawable.ic_instagram,
-                                onClick = { uriHandler.openUri(instagramUrl) }
+                                onClick = { uriHandler.openUriSafely(instagramUrl) }
                             )
                             SocialMediaButton(
                                 iconRes = R.drawable.ic_github,
-                                onClick = { uriHandler.openUri(githubUrl) }
+                                onClick = { uriHandler.openUriSafely(githubUrl) }
                             )
                         }
                     }

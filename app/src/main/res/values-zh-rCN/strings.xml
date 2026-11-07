@@ -73,8 +73,12 @@
     <string name="pref_corner_date_desc">在时钟左下角显示当前日期星期标签</string>
     <string name="pref_hinge_title">显示转轴角度 (Hinge)</string>
     <string name="pref_hinge_desc">在时钟右下角显示实时转轴折叠角度</string>
+    <string name="pref_language_title">语言</string>
+    <string name="language_traditional_follow_system">跟随系统</string>
 
     <!-- 设置对话框：屏幕防护、亮度与休眠控制 -->
+    <string name="pref_smooth_second_title">秒针平滑转动</string>
+    <string name="pref_smooth_second_desc">让秒针连续转动（默认关闭）</string>
     <string name="pref_burn_in_title">屏幕防烧屏机制</string>
     <string name="pref_burn_in_desc">定时微幅抖动画面像素以保护 OLED 屏幕 (默认开启)</string>
     <string name="pref_brightness_title">手动调整亮度</string>

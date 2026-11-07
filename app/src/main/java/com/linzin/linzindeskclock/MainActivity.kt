@@ -7,6 +7,7 @@ import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.res.Resources
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.graphics.Color as AndroidGraphicsColor
@@ -80,6 +81,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -1652,6 +1655,10 @@ fun ClockSettingsDialog(
     onShowBatteryChange: (Boolean) -> Unit,
     showCornerDate: Boolean,
     onShowCornerDateChange: (Boolean) -> Unit,
+    smoothSecondHand: Boolean,
+    onSmoothSecondHandChange: (Boolean) -> Unit,
+    languageTag: String,
+    onLanguageChange: (String) -> Unit,
     showHingeAngle: Boolean,
     onShowHingeAngleChange: (Boolean) -> Unit,
     hasHingeSensor: Boolean = true,
@@ -1993,6 +2000,94 @@ fun ClockSettingsDialog(
                             onCheckedChange = null,
                             enabled = hasHingeSensor
                         )
+                    }
+
+                    var languageMenuExpanded by remember { mutableStateOf(false) }
+                    Box {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { languageMenuExpanded = true }
+                                .padding(vertical = 12.dp, horizontal = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(stringResource(R.string.pref_language_title), fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                Text(
+                                    text = when (languageTag) {
+                                        "system" -> stringResource(R.string.language_traditional_follow_system)
+                                        "zh-TW" -> "繁體中文"
+                                        "zh-CN" -> "简体中文"
+                                        "en" -> "English"
+                                        else -> "Unknown"
+                                    },
+                                    fontSize = 13.sp,
+                                    color = Color.Gray
+                                )
+                            }
+                            Text(
+                                text = when (languageTag) {
+                                    "system" -> stringResource(R.string.language_traditional_follow_system)
+                                    "zh-TW" -> "繁體中文"
+                                    "zh-CN" -> "简体中文"
+                                    "en" -> "English"
+                                    else -> "Unknown"
+                                },
+                                color = Color.White,
+                                fontSize = 15.sp
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = languageMenuExpanded,
+                            onDismissRequest = { languageMenuExpanded = false }
+                        ) {
+                             DropdownMenuItem(
+                                 text = { Text("Follow system") },
+                                 onClick = { languageMenuExpanded = false; onLanguageChange("system") }
+                             )
+                             DropdownMenuItem(
+                                 text = { Text("繁體中文") },
+                                onClick = { languageMenuExpanded = false; onLanguageChange("zh-TW") }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("简体中文") },
+                                onClick = { languageMenuExpanded = false; onLanguageChange("zh-CN") }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("English") },
+                                onClick = { languageMenuExpanded = false; onLanguageChange("en") }
+                            )
+                        }
+                    }
+
+                    Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF33333A)))
+
+                    // 5. 秒針平滑轉動
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onSmoothSecondHandChange(!smoothSecondHand) }
+                            .padding(vertical = 12.dp, horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.pref_smooth_second_title),
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = stringResource(R.string.pref_smooth_second_desc),
+                                fontSize = 13.sp,
+                                color = Color.Gray
+                            )
+                        }
+                        Switch(checked = smoothSecondHand, onCheckedChange = null)
                     }
 
                     Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF33333A)))
@@ -2463,6 +2558,20 @@ fun InitialScreen(
 // 7. 桌面時鐘主介面 (包含單/雙區塊編排)
 // ==========================================
 
+fun systemLanguageTag(context: Context): String {
+    val locale = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        context.getSystemService(android.app.LocaleManager::class.java)?.systemLocales?.get(0)
+    } else {
+        Resources.getSystem().configuration.locales[0]
+    } ?: Locale.getDefault()
+    return when {
+        locale.language.equals("zh", ignoreCase = true) &&
+            (locale.country.equals("CN", ignoreCase = true) || locale.country.equals("SG", ignoreCase = true)) -> "zh-CN"
+        locale.language.equals("zh", ignoreCase = true) -> "zh-TW"
+        else -> "en"
+    }
+}
+
 @Composable
 fun DeskClockScreen(
     foldState: String = "--°",
@@ -2478,7 +2587,7 @@ fun DeskClockScreen(
     val currentLocationStr = stringResource(R.string.current_location)
 
     val prefs = remember { context.getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE) }
-
+    val defaultLanguageTag = remember { systemLanguageTag(context) }
     var burnInProtectionEnabled by remember {
         mutableStateOf(prefs.getBoolean("pref_burn_in_enabled", true))
     }
@@ -2493,6 +2602,8 @@ fun DeskClockScreen(
     var is24Hour by remember { mutableStateOf(prefs.getBoolean("pref_24_hour", false)) }
     var showBattery by remember { mutableStateOf(prefs.getBoolean("pref_show_battery", true)) }
     var showCornerDate by remember { mutableStateOf(prefs.getBoolean("pref_show_corner_date", true)) }
+    var smoothSecondHand by remember { mutableStateOf(prefs.getBoolean("pref_smooth_second_hand", false)) }
+    var languageTag by remember { mutableStateOf(prefs.getString("pref_language_tag", "system") ?: "system") }
     var showHingeAngle by remember { mutableStateOf(prefs.getBoolean("pref_show_hinge_angle", false)) }
     var manualBrightness by remember { mutableStateOf(prefs.getBoolean("pref_manual_brightness", false)) }
     var brightnessValue by remember { mutableFloatStateOf(prefs.getFloat("pref_brightness_val", 0.6f)) }
@@ -2523,11 +2634,13 @@ fun DeskClockScreen(
 
     var isUiLocked by rememberSaveable { mutableStateOf(false) }
 
-    LaunchedEffect(is24Hour, showBattery, showCornerDate, showHingeAngle, manualBrightness, brightnessValue, timeoutMillis, layoutMode, weatherEnabled, isFahrenheit, burnInProtectionEnabled, showCalendarEvents) {
+    LaunchedEffect(is24Hour, showBattery, showCornerDate, smoothSecondHand, languageTag, showHingeAngle, manualBrightness, brightnessValue, timeoutMillis, layoutMode, weatherEnabled, isFahrenheit, burnInProtectionEnabled, showCalendarEvents) {
         prefs.edit()
             .putBoolean("pref_24_hour", is24Hour)
             .putBoolean("pref_show_battery", showBattery)
             .putBoolean("pref_show_corner_date", showCornerDate)
+            .putBoolean("pref_smooth_second_hand", smoothSecondHand)
+            .putString("pref_language_tag", languageTag)
             .putBoolean("pref_show_hinge_angle", showHingeAngle)
             .putBoolean("pref_manual_brightness", manualBrightness)
             .putFloat("pref_brightness_val", brightnessValue)
@@ -2742,6 +2855,7 @@ fun DeskClockScreen(
                     foldState = foldState,
                     is24Hour = is24Hour,
                     showCornerDate = showCornerDate,
+                    smoothSecondHand = smoothSecondHand,
                     showHingeAngle = showHingeAngle,
                     showBattery = showBattery,
                     batteryState = batteryState,
@@ -2766,6 +2880,7 @@ fun DeskClockScreen(
                             foldState = foldState,
                             is24Hour = is24Hour,
                             showCornerDate = showCornerDate,
+                            smoothSecondHand = smoothSecondHand,
                             showHingeAngle = showHingeAngle,
                             showBattery = showBattery,
                             batteryState = batteryState,
@@ -2828,6 +2943,7 @@ fun DeskClockScreen(
                             foldState = foldState,
                             is24Hour = is24Hour,
                             showCornerDate = showCornerDate,
+                            smoothSecondHand = smoothSecondHand,
                             showHingeAngle = showHingeAngle,
                             showBattery = showBattery,
                             batteryState = batteryState,
@@ -2906,9 +3022,26 @@ fun DeskClockScreen(
                 showBattery = showBattery,
                 onShowBatteryChange = { showBattery = it },
                 showCornerDate = showCornerDate,
+                smoothSecondHand = smoothSecondHand,
                 onShowCornerDateChange = { showCornerDate = it },
-                showHingeAngle = showHingeAngle,
-                onShowHingeAngleChange = { showHingeAngle = it },
+                onSmoothSecondHandChange = { smoothSecondHand = it },
+                                  languageTag = languageTag,
+                 onLanguageChange = { selectedTag ->
+                     languageTag = selectedTag
+                     prefs.edit().putString("pref_language_tag", selectedTag).apply()
+                     val appliedLanguageTag = if (selectedTag == "system") {
+                         systemLanguageTag(context)
+                     } else {
+                         selectedTag
+                     }
+                     val locale = Locale.forLanguageTag(appliedLanguageTag)
+                     Locale.setDefault(locale)
+                     val configuration = context.resources.configuration.apply { setLocale(locale) }
+                     context.resources.updateConfiguration(configuration, context.resources.displayMetrics)
+                     (context as? Activity)?.recreate()
+                 },
+                 showHingeAngle = showHingeAngle,
+                 onShowHingeAngleChange = { showHingeAngle = it },
                 hasHingeSensor = hasHingeSensor,
                 manualBrightness = manualBrightness,
                 onManualBrightnessChange = { manualBrightness = it },
@@ -2995,6 +3128,7 @@ fun MainClockSection(
     foldState: String,
     is24Hour: Boolean,
     showCornerDate: Boolean,
+    smoothSecondHand: Boolean,
     showHingeAngle: Boolean,
     showBattery: Boolean,
     batteryState: BatteryState,
@@ -3007,6 +3141,7 @@ fun MainClockSection(
             foldState = foldState,
             is24Hour = is24Hour,
             showCornerDate = showCornerDate,
+            smoothSecondHand = smoothSecondHand,
             showHingeAngle = showHingeAngle,
             isUiLocked = isUiLocked,
             modifier = Modifier.fillMaxSize()
@@ -3030,6 +3165,7 @@ fun MainClockPager(
     foldState: String,
     is24Hour: Boolean,
     showCornerDate: Boolean,
+    smoothSecondHand: Boolean,
     showHingeAngle: Boolean,
     isUiLocked: Boolean,
     modifier: Modifier = Modifier
@@ -3050,6 +3186,7 @@ fun MainClockPager(
             1 -> AnalogClockFace(
                 foldState = foldState,
                 showCornerDate = showCornerDate,
+                smoothSecondHand = smoothSecondHand,
                 showHingeAngle = showHingeAngle,
                 isUiLocked = isUiLocked
             )
@@ -3777,6 +3914,7 @@ fun DigitalClockFace(
 fun AnalogClockFace(
     foldState: String,
     showCornerDate: Boolean = true,
+    smoothSecondHand: Boolean = false,
     showHingeAngle: Boolean = true,
     isUiLocked: Boolean = false,
     modifier: Modifier = Modifier
@@ -3787,7 +3925,7 @@ fun AnalogClockFace(
     var currentTime by remember { mutableStateOf(System.currentTimeMillis()) }
 
     var analogStyleIndex by remember {
-        mutableIntStateOf(prefs.getInt("pref_analog_style_idx", 0).coerceIn(0, 2))
+        mutableIntStateOf(prefs.getInt("pref_analog_style_idx", 0).coerceIn(0, 3))
     }
 
     var showSeconds by remember {
@@ -3799,6 +3937,12 @@ fun AnalogClockFace(
     val painterAbw3 = painterResource(id = R.drawable.abw_3)
     val painterAbw9 = painterResource(id = R.drawable.abw_9)
 
+    val painterTtn1 = painterResource(id = R.drawable.ttn_1)
+    val painterTtn2 = painterResource(id = R.drawable.ttn_2)
+    val painterTtn6 = painterResource(id = R.drawable.ttn_6)
+    val painterTtn3 = painterResource(id = R.drawable.ttn_3)
+    val painterTtn9 = painterResource(id = R.drawable.ttn_9)
+
     val painterOet12 = painterResource(id = R.drawable.oet_12)
     val painterOet6 = painterResource(id = R.drawable.oet_6)
     val painterOet3 = painterResource(id = R.drawable.oet_3)
@@ -3809,10 +3953,10 @@ fun AnalogClockFace(
     val painterZmg3 = painterResource(id = R.drawable.zmg_3)
     val painterZmg9 = painterResource(id = R.drawable.zmg_9)
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(smoothSecondHand) {
         while (true) {
             currentTime = System.currentTimeMillis()
-            delay(1000L)
+            delay(if (smoothSecondHand) 16L else 1000L)
         }
     }
 
@@ -3829,7 +3973,9 @@ fun AnalogClockFace(
     val currentBgColor = when (analogStyleIndex) {
         0 -> Color(0xFFEED55E)
         1 -> Color(0xFF0D0D11)
-        else -> Color(0xFF161413)
+        2 -> Color(0xFF161413)
+        3 -> Color(0xFF000000)
+        else -> Color(0xFF000000)
     }
 
     Box(
@@ -3872,7 +4018,7 @@ fun AnalogClockFace(
                         if (!isUiLocked && !movedTooMuch && elapsed in 30L..450L) {
                             when (maxPointers) {
                                 2 -> {
-                                    analogStyleIndex = (analogStyleIndex + 1) % 3
+                                    analogStyleIndex = (analogStyleIndex + 1) % 4
                                     prefs.edit().putInt("pref_analog_style_idx", analogStyleIndex).apply()
                                     lastSingleTapTime = 0L
                                 }
@@ -3901,7 +4047,11 @@ fun AnalogClockFace(
 
             val hourAngleDeg = (hours + minutes / 60f + seconds / 3600f) * 30f - 90f
             val minAngleDeg = (minutes + seconds / 60f) * 6f - 90f
-            val secAngleDeg = seconds * 6f - 90f
+            val secAngleDeg = if (smoothSecondHand) {
+                (currentTime % 60000L) / 1000f * 6f - 90f
+            } else {
+                seconds * 6f - 90f
+            }
 
             when (analogStyleIndex) {
                 0 -> {
@@ -4301,6 +4451,58 @@ fun AnalogClockFace(
                         drawCircle(color = lollipopRed, radius = 2.8.dp.toPx(), center = Offset(cx, cy))
                     }
                 }
+                3 -> {
+                    val tickRed = Color(0xFFE53935)
+                    val handWhite = Color(0xFFF5F5F5)
+                    val edgeInset = 0f
+                    for (i in 0 until 60) {
+                        val angleDeg = i * 6f - 90f
+                        val angleRad = (angleDeg * (PI / 180f)).toFloat()
+                        val ux = cos(angleRad)
+                        val uy = sin(angleRad)
+                        val tx = if (ux > 0.00001f) (width / 2f - edgeInset) / ux else if (ux < -0.00001f) (-width / 2f + edgeInset) / ux else Float.MAX_VALUE
+                        val ty = if (uy > 0.00001f) (height / 2f - edgeInset) / uy else if (uy < -0.00001f) (-height / 2f + edgeInset) / uy else Float.MAX_VALUE
+                        val t = minOf(tx, ty)
+                        val major = i % 5 == 0
+                        val start = Offset(cx + t * ux, cy + t * uy)
+                        // 按刻度在对应边缘上的位置线性变化：边缘中点最短，角落最长。
+                        val edgePosition = if (kotlin.math.abs(ux) > kotlin.math.abs(uy)) {
+                            (kotlin.math.abs(start.y - cy) / (height / 2f)).coerceIn(0f, 1f)
+                        } else {
+                            (kotlin.math.abs(start.x - cx) / (width / 2f)).coerceIn(0f, 1f)
+                        }
+                        val length = if (major) {
+                            24.dp.toPx() + 24.dp.toPx() * edgePosition
+                        } else {
+                            12.dp.toPx() + 14.dp.toPx() * edgePosition
+                        }
+                        val tickColor = if (major) tickRed else Color.White
+                        val end = Offset(start.x - length * ux, start.y - length * uy)
+                        drawLine(tickColor, start, end, if (major) 3.5.dp.toPx() else 1.7.dp.toPx(), StrokeCap.Square)
+                    }
+                    val digitHeight = (minOf(width, height) * 0.16f).coerceIn(38.dp.toPx(), 54.dp.toPx())
+                    fun drawNumber(painter: androidx.compose.ui.graphics.painter.Painter, x: Float, y: Float) {
+                        val aspect = if (painter.intrinsicSize.height > 0) painter.intrinsicSize.width / painter.intrinsicSize.height else 0.65f
+                        val digitWidth = digitHeight * aspect
+                        translate(left = x - digitWidth / 2f, top = y - digitHeight / 2f) { with(painter) { draw(size = Size(digitWidth, digitHeight), colorFilter = ColorFilter.tint(Color.White)) } }
+                    }
+                    val numberInset = 64.dp.toPx()
+                    drawNumber(painterTtn1, cx - 18.dp.toPx(), numberInset)
+                     drawNumber(painterTtn2, cx + 18.dp.toPx(), numberInset)
+                    drawNumber(painterTtn6, cx, height - numberInset)
+                    drawNumber(painterTtn9, numberInset, cy)
+                    drawNumber(painterTtn3, width - numberInset, cy)
+                    val hourRad = (hourAngleDeg * (PI / 180f)).toFloat()
+                    val minRad = (minAngleDeg * (PI / 180f)).toFloat()
+                    drawLine(handWhite, Offset(cx, cy), Offset(cx + baseRadius * 0.44f * cos(hourRad), cy + baseRadius * 0.44f * sin(hourRad)), 8.dp.toPx(), StrokeCap.Round)
+                    drawLine(handWhite, Offset(cx, cy), Offset(cx + baseRadius * 0.66f * cos(minRad), cy + baseRadius * 0.66f * sin(minRad)), 5.5.dp.toPx(), StrokeCap.Round)
+                    if (showSeconds) {
+                        val secRad = (secAngleDeg * (PI / 180f)).toFloat()
+                        drawLine(tickRed, Offset(cx - 16.dp.toPx() * cos(secRad), cy - 16.dp.toPx() * sin(secRad)), Offset(cx + baseRadius * 0.76f * cos(secRad), cy + baseRadius * 0.76f * sin(secRad)), 2.dp.toPx(), StrokeCap.Round)
+                    }
+                    drawCircle(handWhite, 8.dp.toPx(), Offset(cx, cy))
+                    if (showSeconds) drawCircle(tickRed, 3.5.dp.toPx(), Offset(cx, cy))
+                }
             }
         }
 
@@ -4308,6 +4510,7 @@ fun AnalogClockFace(
             val dateTextColor = when (analogStyleIndex) {
                 0 -> Color(0xFF222222)
                 1 -> Color(0xFF8E8E98)
+                3 -> Color.White
                 else -> Color(0xFF9E8F85)
             }
             Text(
@@ -4860,6 +5063,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val prefs = getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE)
+        val savedLanguageTag = prefs.getString("pref_language_tag", null)
+        val languageTag = savedLanguageTag?.takeUnless { it == "system" } ?: systemLanguageTag(this)
+        val locale = Locale.forLanguageTag(languageTag)
+        Locale.setDefault(locale)
+        resources.updateConfiguration(resources.configuration.apply { setLocale(locale) }, resources.displayMetrics)
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 

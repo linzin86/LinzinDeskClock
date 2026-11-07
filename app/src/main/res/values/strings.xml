@@ -72,8 +72,12 @@
     <string name="pref_corner_date_desc">Show date and weekday label at bottom-left</string>
     <string name="pref_hinge_title">Show Hinge Angle</string>
     <string name="pref_hinge_desc">Show real-time fold angle at bottom-right</string>
+    <string name="pref_language_title">Language</string>
+    <string name="language_traditional_follow_system">Follow System</string>
 
     <!-- Settings Dialog: Screen Protection, Brightness & Timeout -->
+    <string name="pref_smooth_second_title">Smooth Second Hand</string>
+    <string name="pref_smooth_second_desc">Move the second hand continuously (Default off)</string>
     <string name="pref_burn_in_title">Burn-In Protection</string>
     <string name="pref_burn_in_desc">Subtly dither display periodically to protect OLED panels (Default on)</string>
     <string name="pref_brightness_title">Manual Brightness</string>

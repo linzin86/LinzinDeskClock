@@ -3106,6 +3106,21 @@ fun SideWidgetPager(
     }
 }
 
+/**
+ * 每到整秒更新一次的目前時間，避免 delay(1000) 累積誤差造成跳秒
+ */
+@Composable
+fun rememberCurrentTimeMillis(): Long {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000L - System.currentTimeMillis() % 1000L)
+            now = System.currentTimeMillis()
+        }
+    }
+    return now
+}
+
 // ==========================================
 // 8. 側邊面板元件 (日曆與天氣)
 // ==========================================
@@ -3115,14 +3130,7 @@ fun SideDateWidget(
     calendarEvents: List<UpcomingCalendarEvent> = emptyList(),
     modifier: Modifier = Modifier
 ) {
-    var currentTime by remember { mutableStateOf(System.currentTimeMillis()) }
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            currentTime = System.currentTimeMillis()
-            delay(1000L)
-        }
-    }
+    val currentTime = rememberCurrentTimeMillis()
 
     val calendar = remember(currentTime) {
         Calendar.getInstance().apply { timeInMillis = currentTime }
@@ -3593,7 +3601,7 @@ fun DigitalClockFace(
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE) }
 
-    var currentTime by remember { mutableStateOf(System.currentTimeMillis()) }
+    val currentTime = rememberCurrentTimeMillis()
 
     val availableStyles = remember { listOf("tk", "ttn", "rafm") }
     var currentStyleIndex by remember {
@@ -3603,13 +3611,6 @@ fun DigitalClockFace(
 
     var showSeconds by remember {
         mutableStateOf(prefs.getBoolean("pref_digital_show_sec", false))
-    }
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            currentTime = System.currentTimeMillis()
-            delay(1000L)
-        }
     }
 
     val timeString = remember(currentTime, is24Hour, showSeconds) {
@@ -3806,7 +3807,7 @@ fun AnalogClockFace(
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE) }
 
-    var currentTime by remember { mutableStateOf(System.currentTimeMillis()) }
+    val currentTime = rememberCurrentTimeMillis()
 
     var analogStyleIndex by remember {
         mutableIntStateOf(prefs.getInt("pref_analog_style_idx", 0).coerceIn(0, 2))
@@ -3830,13 +3831,6 @@ fun AnalogClockFace(
     val painterZmg6 = painterResource(id = R.drawable.zmg_6)
     val painterZmg3 = painterResource(id = R.drawable.zmg_3)
     val painterZmg9 = painterResource(id = R.drawable.zmg_9)
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            currentTime = System.currentTimeMillis()
-            delay(1000L)
-        }
-    }
 
     val calendar = remember(currentTime) {
         Calendar.getInstance().apply { timeInMillis = currentTime }
@@ -4572,7 +4566,7 @@ fun FlipClockFace(
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE) }
 
-    var currentTime by remember { mutableStateOf(System.currentTimeMillis()) }
+    val currentTime = rememberCurrentTimeMillis()
 
     val availableStyles = remember { listOf("pp", "fft") }
     var currentStyleIndex by remember {
@@ -4582,13 +4576,6 @@ fun FlipClockFace(
 
     var showSeconds by remember {
         mutableStateOf(prefs.getBoolean("pref_flip_show_sec", false))
-    }
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            currentTime = System.currentTimeMillis()
-            delay(1000L)
-        }
     }
 
     val hourPattern = if (is24Hour) "HH" else "hh"

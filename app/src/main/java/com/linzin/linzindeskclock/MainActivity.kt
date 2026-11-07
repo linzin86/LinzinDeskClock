@@ -152,6 +152,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import androidx.compose.runtime.rememberCoroutineScope
 import android.os.CancellationSignal
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -210,12 +211,12 @@ data class UpcomingCalendarEvent(
 /**
  * 查詢未來 48 小時內的日曆行程（自動過濾已結束的事件與過去的全天行程）
  */
-fun fetchUpcomingCalendarEvents(context: Context): List<UpcomingCalendarEvent> {
+suspend fun fetchUpcomingCalendarEvents(context: Context): List<UpcomingCalendarEvent> = withContext(Dispatchers.IO) {
     val hasPermission = ContextCompat.checkSelfPermission(
         context,
         Manifest.permission.READ_CALENDAR
     ) == PackageManager.PERMISSION_GRANTED
-    if (!hasPermission) return emptyList()
+    if (!hasPermission) return@withContext emptyList()
 
     val eventList = mutableListOf<UpcomingCalendarEvent>()
     val now = System.currentTimeMillis()
@@ -305,7 +306,7 @@ fun fetchUpcomingCalendarEvents(context: Context): List<UpcomingCalendarEvent> {
         Log.e("DeskClockCalendar", "Error querying calendar instances", e)
     }
 
-    return eventList
+    eventList
 }
 
 /**
@@ -2532,13 +2533,14 @@ fun DeskClockScreen(
         mutableStateOf(prefs.getBoolean("pref_show_calendar_events", false))
     }
     var calendarEventsList by remember { mutableStateOf<List<UpcomingCalendarEvent>>(emptyList()) }
+    val coroutineScope = rememberCoroutineScope()
 
     val calendarPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         showCalendarEvents = isGranted
         if (isGranted) {
-            calendarEventsList = fetchUpcomingCalendarEvents(context)
+            coroutineScope.launch { calendarEventsList = fetchUpcomingCalendarEvents(context) }
         }
     }
 
@@ -2957,7 +2959,7 @@ fun DeskClockScreen(
                         ) == PackageManager.PERMISSION_GRANTED
                         if (hasCalPerm) {
                             showCalendarEvents = true
-                            calendarEventsList = fetchUpcomingCalendarEvents(context)
+                            coroutineScope.launch { calendarEventsList = fetchUpcomingCalendarEvents(context) }
                         } else {
                             calendarPermissionLauncher.launch(Manifest.permission.READ_CALENDAR)
                         }

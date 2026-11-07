@@ -51,7 +51,8 @@
     <string name="temp_unit_switch">溫標切換</string>
     <string name="temp_unit_c">攝氏度 (°C)</string>
     <string name="temp_unit_f">華氏度 (°F)</string>
-    <string name="city_default">新竹市</string>
+    <string name="weather_no_location_title">無法取得位置</string>
+    <string name="weather_no_location_desc">請開啟裝置的定位服務</string>
     <string name="current_location">目前位置</string>
     <string name="weather_disabled_title">尚未啟用天氣資訊</string>
     <string name="weather_disabled_desc">請點擊右上角 ⚙ 設定\n開啟「啟用當地天氣資訊」\n並授予位置權限即可顯示</string>

@@ -50,7 +50,8 @@
     <string name="temp_unit_switch">Temperature Unit</string>
     <string name="temp_unit_c">Celsius (°C)</string>
     <string name="temp_unit_f">Fahrenheit (°F)</string>
-    <string name="city_default">Hsinchu</string>
+    <string name="weather_no_location_title">Location Unavailable</string>
+    <string name="weather_no_location_desc">Turn on location services on this device.</string>
     <string name="current_location">Current Location</string>
     <string name="weather_disabled_title">Weather Disabled</string>
     <string name="weather_disabled_desc">Tap ⚙ Settings in top right\nto enable Local Weather\nand grant location access.</string>

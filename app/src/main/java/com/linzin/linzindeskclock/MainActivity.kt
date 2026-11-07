@@ -152,6 +152,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import android.os.CancellationSignal
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 // ==========================================
 // 1. 主題配色與資料結構
@@ -325,7 +328,8 @@ fun executeShellCommand(command: String) {
  */
 suspend fun fetchOpenMeteoWeather(lat: Double, lon: Double, cityName: String): WeatherInfo? = withContext(Dispatchers.IO) {
     try {
-        val urlStr = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code&hourly=temperature_2m,weather_code&timezone=auto"
+        // unixtime keeps hourly slots comparable with the device clock, whatever time zone the location is in
+        val urlStr = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code&hourly=temperature_2m,weather_code&timezone=auto&timeformat=unixtime"
         val connection = URL(urlStr).openConnection() as HttpURLConnection
         connection.requestMethod = "GET"
         connection.connectTimeout = 8000
@@ -343,52 +347,69 @@ suspend fun fetchOpenMeteoWeather(lat: Double, lon: Double, cityName: String): W
         val temps = hourlyObj.getJSONArray("temperature_2m")
         val codes = hourlyObj.getJSONArray("weather_code")
 
-        val nowCal = Calendar.getInstance()
-        val currentHourInt = nowCal.get(Calendar.HOUR_OF_DAY)
-
-        val hourlyResult = mutableListOf<HourlyWeather>()
-        val inFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm", Locale.US)
-        val outFormat = SimpleDateFormat("ha", Locale.US)
-
-        for (i in 0 until times.length()) {
-            val tStr = times.getString(i)
-            val date = inFormat.parse(tStr)
-            if (date != null) {
-                val cal = Calendar.getInstance().apply { time = date }
-                if (cal.get(Calendar.HOUR_OF_DAY) >= currentHourInt && cal.get(Calendar.DAY_OF_YEAR) == nowCal.get(Calendar.DAY_OF_YEAR)) {
-                    val label = outFormat.format(date).uppercase(Locale.US)
-                    val t = temps.getDouble(i).toFloat()
-                    val c = codes.getInt(i)
-                    hourlyResult.add(HourlyWeather(timeLabel = label, tempC = t, weatherCode = c))
-                    if (hourlyResult.size == 4) break
-                }
-            }
-        }
-
-        var fallbackIdx = 0
-        while (hourlyResult.size < 4 && fallbackIdx < times.length()) {
-            val tStr = times.getString(fallbackIdx)
-            val date = inFormat.parse(tStr)
-            if (date != null) {
-                val label = outFormat.format(date).uppercase(Locale.US)
-                val t = temps.getDouble(fallbackIdx).toFloat()
-                val c = codes.getInt(fallbackIdx)
-                if (hourlyResult.none { it.timeLabel == label }) {
-                    hourlyResult.add(HourlyWeather(timeLabel = label, tempC = t, weatherCode = c))
-                }
-            }
-            fallbackIdx++
-        }
-
         WeatherInfo(
             cityName = cityName,
             currentTempC = currentTemp,
             currentWeatherCode = currentCode,
-            hourlyList = hourlyResult
+            hourlyList = pickUpcomingHours(
+                slotStartsSec = List(times.length()) { times.getLong(it) },
+                tempsC = List(temps.length()) { temps.getDouble(it).toFloat() },
+                weatherCodes = List(codes.length()) { codes.getInt(it) },
+                nowMillis = System.currentTimeMillis()
+            )
         )
     } catch (e: Exception) {
         Log.e("DeskClockWeather", "Failed to fetch Open-Meteo", e)
         null
+    }
+}
+
+/**
+ * 從逐時預報中取出「目前這一小時」起的連續 [count] 筆
+ */
+internal fun pickUpcomingHours(
+    slotStartsSec: List<Long>,
+    tempsC: List<Float>,
+    weatherCodes: List<Int>,
+    nowMillis: Long,
+    count: Int = 4
+): List<HourlyWeather> {
+    val labelFormat = SimpleDateFormat("ha", Locale.US)
+    val firstIdx = slotStartsSec.indexOfFirst { it * 1000L + 3_600_000L > nowMillis }
+    if (firstIdx < 0) return emptyList()
+    return (firstIdx until minOf(firstIdx + count, slotStartsSec.size)).map { i ->
+        HourlyWeather(
+            timeLabel = labelFormat.format(Date(slotStartsSec[i] * 1000L)).uppercase(Locale.US),
+            tempC = tempsC[i],
+            weatherCode = weatherCodes[i]
+        )
+    }
+}
+
+/**
+ * 取得目前位置：先用系統快取的最後位置，沒有時再主動定位一次；都失敗則回傳 null
+ */
+suspend fun findCurrentLocation(context: Context): Location? {
+    val locationManager = context.getSystemService(LocationManager::class.java) ?: return null
+    val providers = listOf(
+        LocationManager.FUSED_PROVIDER,
+        LocationManager.NETWORK_PROVIDER,
+        LocationManager.GPS_PROVIDER
+    ).filter { locationManager.isProviderEnabled(it) }
+
+    try {
+        providers.firstNotNullOfOrNull { locationManager.getLastKnownLocation(it) }?.let { return it }
+        val provider = providers.firstOrNull() ?: return null
+        return suspendCancellableCoroutine { cont ->
+            val cancelSignal = CancellationSignal()
+            cont.invokeOnCancellation { cancelSignal.cancel() }
+            locationManager.getCurrentLocation(provider, cancelSignal, context.mainExecutor) { location ->
+                cont.resume(location)
+            }
+        }
+    } catch (e: SecurityException) {
+        Log.e("DeskClockWeather", "Location permission missing", e)
+        return null
     }
 }
 
@@ -2474,7 +2495,6 @@ fun DeskClockScreen(
     val activity = context as? Activity
     val window = activity?.window
 
-    val defaultCityStr = stringResource(R.string.city_default)
     val currentLocationStr = stringResource(R.string.current_location)
 
     val prefs = remember { context.getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE) }
@@ -2506,6 +2526,7 @@ fun DeskClockScreen(
     var weatherEnabled by remember { mutableStateOf(prefs.getBoolean("pref_weather_enabled", false)) }
     var isFahrenheit by remember { mutableStateOf(prefs.getBoolean("pref_is_fahrenheit", false)) }
     var weatherInfo by remember { mutableStateOf<WeatherInfo?>(null) }
+    var isLocationUnavailable by remember { mutableStateOf(false) }
 
     var showCalendarEvents by remember {
         mutableStateOf(prefs.getBoolean("pref_show_calendar_events", false))
@@ -2589,39 +2610,28 @@ fun DeskClockScreen(
 
             if (hasFine || hasCoarse) {
                 while (true) {
-                    withContext(Dispatchers.IO) {
-                        try {
-                            val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-                            val location: Location? = locationManager?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-                                ?: locationManager?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                    val location = findCurrentLocation(context)
+                    isLocationUnavailable = location == null
 
-                            val lat = location?.latitude ?: 24.838
-                            val lon = location?.longitude ?: 121.017
-
-                            var detectedCity = defaultCityStr
+                    val data = location?.let { loc ->
+                        val detectedCity = withContext(Dispatchers.IO) {
                             try {
-                                val geocoder = Geocoder(context, Locale.getDefault())
-                                val addresses = geocoder.getFromLocation(lat, lon, 1)
-                                if (!addresses.isNullOrEmpty()) {
-                                    val addr = addresses[0]
-                                    detectedCity = addr.locality
-                                        ?: addr.subAdminArea
-                                        ?: addr.adminArea
-                                        ?: currentLocationStr
-                                }
+                                @Suppress("DEPRECATION")
+                                Geocoder(context, Locale.getDefault())
+                                    .getFromLocation(loc.latitude, loc.longitude, 1)
+                                    ?.firstOrNull()
+                                    ?.let { it.locality ?: it.subAdminArea ?: it.adminArea }
                             } catch (e: Exception) {
-                                // 保持預設
+                                Log.w("DeskClockWeather", "Reverse geocoding failed", e)
+                                null
                             }
-
-                            val data = fetchOpenMeteoWeather(lat, lon, detectedCity)
-                            withContext(Dispatchers.Main) {
-                                weatherInfo = data
-                            }
-                        } catch (e: Exception) {
-                            Log.e("DeskClockWeather", "Location error", e)
-                        }
+                        } ?: currentLocationStr
+                        fetchOpenMeteoWeather(loc.latitude, loc.longitude, detectedCity)
                     }
-                    delay(30 * 60 * 1000L)
+
+                    // 失敗時保留上一次的資料，並提早重試
+                    if (data != null) weatherInfo = data
+                    delay(if (data != null) 30 * 60 * 1000L else 2 * 60 * 1000L)
                 }
             } else {
                 locationPermissionLauncher.launch(
@@ -2785,6 +2795,7 @@ fun DeskClockScreen(
                             state = sidePagerState,
                             weatherEnabled = weatherEnabled,
                             weatherInfo = weatherInfo,
+                isLocationUnavailable = isLocationUnavailable,
                             isFahrenheit = isFahrenheit,
                             isUiLocked = isUiLocked,
                             calendarEvents = calendarEventsList,
@@ -2809,6 +2820,7 @@ fun DeskClockScreen(
                             state = sidePagerState,
                             weatherEnabled = weatherEnabled,
                             weatherInfo = weatherInfo,
+                isLocationUnavailable = isLocationUnavailable,
                             isFahrenheit = isFahrenheit,
                             isUiLocked = isUiLocked,
                             calendarEvents = calendarEventsList,
@@ -3069,6 +3081,7 @@ fun SideWidgetPager(
     state: PagerState,
     weatherEnabled: Boolean,
     weatherInfo: WeatherInfo?,
+    isLocationUnavailable: Boolean,
     isFahrenheit: Boolean,
     isUiLocked: Boolean,
     calendarEvents: List<UpcomingCalendarEvent>,
@@ -3084,6 +3097,7 @@ fun SideWidgetPager(
             1 -> SideWeatherWidget(
                 weatherEnabled = weatherEnabled,
                 weatherInfo = weatherInfo,
+                isLocationUnavailable = isLocationUnavailable,
                 isFahrenheit = isFahrenheit
             )
         }
@@ -3344,6 +3358,7 @@ fun SideDateWidget(
 fun SideWeatherWidget(
     weatherEnabled: Boolean,
     weatherInfo: WeatherInfo?,
+    isLocationUnavailable: Boolean,
     isFahrenheit: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -3354,6 +3369,7 @@ fun SideWeatherWidget(
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
         if (!weatherEnabled || weatherInfo == null) {
+            val showNoLocation = weatherEnabled && isLocationUnavailable
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -3364,7 +3380,9 @@ fun SideWeatherWidget(
                 Text(text = "⛅", fontSize = 38.sp)
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = stringResource(R.string.weather_disabled_title),
+                    text = stringResource(
+                        if (showNoLocation) R.string.weather_no_location_title else R.string.weather_disabled_title
+                    ),
                     color = Color.White,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -3372,7 +3390,9 @@ fun SideWeatherWidget(
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = stringResource(R.string.weather_disabled_desc),
+                    text = stringResource(
+                        if (showNoLocation) R.string.weather_no_location_desc else R.string.weather_disabled_desc
+                    ),
                     color = Color(0xFF8E8E93),
                     fontSize = 11.sp,
                     lineHeight = 16.sp,

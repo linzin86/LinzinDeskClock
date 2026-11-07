@@ -175,6 +175,12 @@ private val DeskClockColorScheme = darkColorScheme(
     outline = Color(0xFF5A5A62)
 )
 
+const val PREFS_NAME = "desk_clock_prefs"
+const val PREF_BYPASS_COUNT = "pref_non_fold_bypass_count"
+
+/** 非摺疊機同意放行達此次數後，視為永久放行 */
+const val PERMANENT_BYPASS_COUNT = 3
+
 enum class ClockLayoutMode {
     SINGLE,
     DUAL_LEFT_LARGE,
@@ -1627,12 +1633,12 @@ fun NonFoldableDialog(
                 // 5. 同意放行按鈕（計數與 Toast 切換核心邏輯）
                 Surface(
                     onClick = {
-                        val prefs = context.getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE)
-                        val currentCount = prefs.getInt("pref_non_fold_bypass_count", 0) + 1
-                        prefs.edit().putInt("pref_non_fold_bypass_count", currentCount).apply()
+                        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                        val currentCount = prefs.getInt(PREF_BYPASS_COUNT, 0) + 1
+                        prefs.edit().putInt(PREF_BYPASS_COUNT, currentCount).apply()
 
                         // 第 3 次按下時，跳出解鎖終身放行的專屬 Toast
-                        val toastMsg = if (currentCount >= 3) acceptPermanentText else acceptThanksText
+                        val toastMsg = if (currentCount >= PERMANENT_BYPASS_COUNT) acceptPermanentText else acceptThanksText
                         Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
 
                         onDismiss()
@@ -2498,7 +2504,7 @@ fun DeskClockScreen(
 
     val currentLocationStr = stringResource(R.string.current_location)
 
-    val prefs = remember { context.getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE) }
+    val prefs = remember { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
 
     var burnInProtectionEnabled by remember {
         mutableStateOf(prefs.getBoolean("pref_burn_in_enabled", true))
@@ -3661,7 +3667,7 @@ fun DigitalClockFace(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE) }
+    val prefs = remember { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
 
     val currentTime = rememberCurrentTimeMillis()
 
@@ -3822,7 +3828,7 @@ fun AnalogClockFace(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE) }
+    val prefs = remember { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
 
     val currentTime = rememberCurrentTimeMillis()
 
@@ -4537,7 +4543,7 @@ fun FlipClockFace(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE) }
+    val prefs = remember { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
 
     val currentTime = rememberCurrentTimeMillis()
 
@@ -4788,6 +4794,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     private var isRearDisplayActive = false
 
+    private fun isPermanentBypass(): Boolean =
+        !hasHingeSensor &&
+            getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getInt(PREF_BYPASS_COUNT, 0) >= PERMANENT_BYPASS_COUNT
+
     private fun isTallAspectRatio(): Boolean {
         val metrics = resources.displayMetrics
         val maxDim = maxOf(metrics.widthPixels, metrics.heightPixels).toFloat()
@@ -4815,9 +4825,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
         if (!hasHingeSensor) {
             foldState = "NO_HINGE"
-            val prefs = getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE)
-            val bypassCount = prefs.getInt("pref_non_fold_bypass_count", 0)
-            if (bypassCount >= 3) {
+            if (isPermanentBypass()) {
                 isNonFoldableBypassed = true
                 showClockScreen = true
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
@@ -4827,11 +4835,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         setContent {
             MaterialTheme(colorScheme = DeskClockColorScheme) {
                 BackHandler(enabled = showClockScreen) {
-                    val prefs = getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE)
-                    val bypassCount = prefs.getInt("pref_non_fold_bypass_count", 0)
-
                     // 若是非摺疊機且已達成永久放行門檻，按返回鍵直接退出整個 App
-                    if (!hasHingeSensor && bypassCount >= 3) {
+                    if (isPermanentBypass()) {
                         finish()
                     } else {
                         // 一般大摺疊機：恢復原本狀態並退回引導頁面
@@ -4875,9 +4880,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         // 從後台切回 APP 時，若正在時鐘介面，重新恢復全螢幕沉浸模式
         if (showClockScreen) {
             setImmersiveMode(window, true)
-            val prefs = getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE)
-            val isPermanentBypass = !hasHingeSensor && prefs.getInt("pref_non_fold_bypass_count", 0) >= 3
-            if (isPermanentBypass) {
+            if (isPermanentBypass()) {
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             }
         }
@@ -4903,11 +4906,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         super.onStop()
         sensorManager.unregisterListener(this)
 
-        val prefs = getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE)
-        val isPermanentBypass = !hasHingeSensor && prefs.getInt("pref_non_fold_bypass_count", 0) >= 3
-
         // 如果是已永久放行的非摺疊機，按 Home 鍵退回後台時，不要重置 showClockScreen
-        if (isPermanentBypass) {
+        if (isPermanentBypass()) {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             setImmersiveMode(window, false)
             return

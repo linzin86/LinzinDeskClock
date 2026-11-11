@@ -4,6 +4,12 @@
 
     <string name="initial_prompt_fold">请将手机半折\n以在外屏幕启用桌面时钟</string>
 
+    <!-- 小折叠提示对话框 -->
+    <string name="clamshell_notice_title">上下小折叠使用提示</string>
+    <string name="clamshell_notice_desc">检测到您当前使用的是上下翻折的小折叠屏手机。\n\n目前多数品牌受限于原厂系统限制，半折后可能无法在外屏顺利接续显示时钟（目前实测仅 Motorola razr 40 Ultra 及更新的机型支持外屏正常接续）。\n\n您可以先尝试将手机半折看看；若外屏无法正常显示，建议您完全展开手机，并以横向放置方式使用内屏时钟。</string>
+    <string name="clamshell_notice_btn_try">我知道了，我试试看</string>
+    <string name="clamshell_notice_btn_fail">外屏无法正常显示</string>
+
     <!-- 手势教学引导遮罩 -->
     <string name="tutorial_title">手势操作指南</string>
     <string name="tutorial_single_tap_title">单指轻触</string>

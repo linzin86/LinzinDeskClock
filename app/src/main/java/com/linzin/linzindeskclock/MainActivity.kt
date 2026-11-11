@@ -209,19 +209,19 @@ data class UpcomingCalendarEvent(
 )
 
 fun setAppLanguage(context: Context, languageCode: String) {
-    // 1. 存入 SharedPreferences 保險
     context.getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE)
         .edit()
         .putString("pref_app_language", languageCode)
         .apply()
 
-    // 2. 調用官方相容 API
     val appLocale: LocaleListCompat = if (languageCode == "system") {
         LocaleListCompat.getEmptyLocaleList()
     } else {
         LocaleListCompat.forLanguageTags(languageCode)
     }
     AppCompatDelegate.setApplicationLocales(appLocale)
+
+    (context as? Activity)?.recreate()
 }
 
 fun getCurrentLanguageTag(context: Context): String {
@@ -1692,6 +1692,99 @@ fun SwitchToDualLayoutDialog(
 }
 
 @Composable
+fun ClamshellNoticeDialog(
+    onDismiss: () -> Unit,
+    onFallbackToNonFoldable: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.88f)
+                .wrapContentHeight(),
+            shape = RoundedCornerShape(24.dp),
+            color = Color(0xFF1E1E22)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // 1. 標題
+                Text(
+                    text = stringResource(R.string.clamshell_notice_title),
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // 2. 說明文字
+                Text(
+                    text = stringResource(R.string.clamshell_notice_desc),
+                    color = Color(0xFFC4C4CC),
+                    fontSize = 13.5.sp,
+                    lineHeight = 20.sp,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(22.dp))
+
+                // 3. 我試試看按鈕
+                Surface(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF81C7D4),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = stringResource(R.string.clamshell_notice_btn_try),
+                            color = Color(0xFF041E49),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // 4. 外螢幕無法正常顯示按鈕（直接觸發「真可惜呢」對話框）
+                Surface(
+                    onClick = {
+                        onDismiss()
+                        onFallbackToNonFoldable()
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF2C2C34),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = stringResource(R.string.clamshell_notice_btn_fail),
+                            color = Color(0xFFE57373),
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun NonFoldableDialog(
     onDismiss: () -> Unit,
     onAccept: () -> Unit
@@ -2664,21 +2757,29 @@ fun ClockSettingsDialog(
 fun InitialScreen(
     hasHingeSensor: Boolean = true,
     isClamshell: Boolean = false,
+    shouldPromptClamshell: Boolean = false,
     onEnterClockDirectly: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
 
+    val prefs = remember { context.getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE) }
+
     val versionName = remember(context) {
         try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.1"
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0"
         } catch (e: Exception) {
-            "1.0.1"
+            "1.0"
         }
     }
 
     val uriHandler = LocalUriHandler.current
     var showNonFoldableDialog by remember { mutableStateOf(false) }
+
+    var showClamshellNoticeDialog by remember {
+        val hasDismissedBefore = prefs.getBoolean("pref_dismiss_clamshell_notice", false)
+        mutableStateOf(shouldPromptClamshell && !hasDismissedBefore)
+    }
 
     val toastLiarFoldableText = stringResource(R.string.toast_liar_foldable)
 
@@ -2903,6 +3004,30 @@ fun InitialScreen(
                     .navigationBarsPadding()
                     .padding(end = 4.dp, bottom = 2.dp)
             )
+
+            if (showNonFoldableDialog) {
+                NonFoldableDialog(
+                    onDismiss = { showNonFoldableDialog = false },
+                    onAccept = {
+                        showNonFoldableDialog = false
+                        onEnterClockDirectly()
+                    }
+                )
+            }
+
+            if (showClamshellNoticeDialog) {
+                ClamshellNoticeDialog(
+                    onDismiss = {
+                        showClamshellNoticeDialog = false
+                        prefs.edit().putBoolean("pref_dismiss_clamshell_notice", true).apply()
+                    },
+                    onFallbackToNonFoldable = {
+                        showClamshellNoticeDialog = false
+                        prefs.edit().putBoolean("pref_dismiss_clamshell_notice", true).apply()
+                        showNonFoldableDialog = true
+                    }
+                )
+            }
 
             if (showNonFoldableDialog) {
                 NonFoldableDialog(
@@ -3329,6 +3454,7 @@ fun DeskClockScreen(
                             weatherEnabled = weatherEnabled,
                             weatherInfo = weatherInfo,
                             isFahrenheit = isFahrenheit,
+                            is24Hour = is24Hour,
                             isUiLocked = isUiLocked,
                             calendarEvents = calendarEventsList,
                             modifier = Modifier.fillMaxSize()
@@ -5369,6 +5495,21 @@ fun FlipClockFace(
 
 class MainActivity : ComponentActivity(), SensorEventListener {
 
+    override fun attachBaseContext(newBase: Context) {
+        val prefs = newBase.getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE)
+        val savedLang = prefs.getString("pref_app_language", "system") ?: "system"
+
+        if (savedLang != "system") {
+            val locale = Locale.forLanguageTag(savedLang)
+            val config = newBase.resources.configuration
+            config.setLocale(locale)
+            val localizedContext = newBase.createConfigurationContext(config)
+            super.attachBaseContext(localizedContext)
+            return
+        }
+        super.attachBaseContext(newBase)
+    }
+
     // 各品牌外螢幕狀態 ID 適配
     private val targetStateId: String by lazy {
         val brand = Build.MANUFACTURER.lowercase()
@@ -5546,9 +5687,13 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         hasHingeSensor = hasHingeSensor
                     )
                 } else {
+                    val isClamshellDevice = hasHingeSensor && isTallAspectRatio()
+                    val isOpenedWide = lastRecordedHingeAngle >= 160f || lastRecordedHingeAngle < 0f
+
                     InitialScreen(
                         hasHingeSensor = hasHingeSensor,
-                        isClamshell = isClamshell || (hasHingeSensor && isTallAspectRatio()),
+                        isClamshell = isClamshellDevice,
+                        shouldPromptClamshell = isClamshellDevice && isOpenedWide,
                         onEnterClockDirectly = {
                             isNonFoldableBypassed = true
                             showClockScreen = true
@@ -5559,7 +5704,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             }
         }
     }
-
 
     override fun onResume() {
         super.onResume()

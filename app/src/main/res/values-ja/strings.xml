@@ -4,6 +4,12 @@
 
     <string name="initial_prompt_fold">スマートフォンを半折りにして\nカバー画面でデスククロックを起動してください</string>
 
+    <!-- 縦折りスマホ案内ダイアログ -->
+    <string name="clamshell_notice_title">縦折り端末をご利用の方へ</string>
+    <string name="clamshell_notice_desc">縦折りの折りたたみスマートフォンを検出しました。\n\n多くの端末はメーカー側のシステム制限により、半折りにしてもカバー画面で時計が正常に引き継ぎ表示されない場合があります（現在、Motorola razr 40 Ultra以降の機種のみ動作確認済みです）。\n\nまずは端末を半折りにしてお試しください。もしカバー画面に表示されない場合は、画面を完全に開いて横向きにし、メイン画面でご利用いただくことを推奨します。</string>
+    <string name="clamshell_notice_btn_try">了解、試してみる</string>
+    <string name="clamshell_notice_btn_fail">カバー画面で表示できない</string>
+
     <!-- 手勢教學引導遮罩 -->
     <string name="tutorial_title">ジェスチャー操作ガイド</string>
     <string name="tutorial_single_tap_title">シングルタップ</string>

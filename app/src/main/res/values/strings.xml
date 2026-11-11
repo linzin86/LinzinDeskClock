@@ -3,6 +3,12 @@
 
     <string name="initial_prompt_fold">Please fold the device halfway\nto activate Desk Clock on the cover screen.</string>
 
+    <!-- Clamshell Notice Dialog -->
+    <string name="clamshell_notice_title">Notice for Flip Foldables</string>
+    <string name="clamshell_notice_desc">We detected that you are using a vertical clamshell flip foldable.\n\nDue to OEM system restrictions, most flip devices cannot automatically display the clock on the cover screen when half-folded (currently verified only on Motorola razr 40 Ultra and newer).\n\nYou can try half-folding your phone first. If the cover screen cannot display the clock, please unfold the phone completely and use it in landscape orientation.</string>
+    <string name="clamshell_notice_btn_try">Got it, let me try</string>
+    <string name="clamshell_notice_btn_fail">Cover screen doesn\'t work</string>
+
     <!-- Gesture Tutorial Overlay -->
     <string name="tutorial_title">Gesture Guide</string>
     <string name="tutorial_single_tap_title">Single Tap</string>

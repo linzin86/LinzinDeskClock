@@ -84,6 +84,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -116,6 +117,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
@@ -208,34 +210,51 @@ data class UpcomingCalendarEvent(
     val timeLabel: String
 )
 
+var currentAppLocaleTag by mutableStateOf("system")
+
+fun updateActivityResourcesLocale(context: Context, languageCode: String) {
+    val targetLocale = if (languageCode == "system") {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            android.content.res.Resources.getSystem().configuration.locales[0]
+        } else {
+            @Suppress("DEPRECATION")
+            android.content.res.Resources.getSystem().configuration.locale
+        }
+    } else {
+        Locale.forLanguageTag(languageCode)
+    }
+    Locale.setDefault(targetLocale)
+
+    val res = context.resources
+    val config = android.content.res.Configuration(res.configuration)
+    config.setLocale(targetLocale)
+    @Suppress("DEPRECATION")
+    res.updateConfiguration(config, res.displayMetrics)
+}
+
 fun setAppLanguage(context: Context, languageCode: String) {
+    // 1. 儲存設定
     context.getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE)
         .edit()
         .putString("pref_app_language", languageCode)
         .apply()
 
-    val appLocale: LocaleListCompat = if (languageCode == "system") {
-        LocaleListCompat.getEmptyLocaleList()
-    } else {
-        LocaleListCompat.forLanguageTags(languageCode)
-    }
-    AppCompatDelegate.setApplicationLocales(appLocale)
+    // 2. 更新 Activity 的 Resources 配置
+    updateActivityResourcesLocale(context, languageCode)
 
-    (context as? Activity)?.recreate()
+    // 3. 更新 Compose State，觸發介面 0 毫秒無縫重繪
+    currentAppLocaleTag = languageCode
 }
 
 fun getCurrentLanguageTag(context: Context): String {
-    // 優先讀取保存的設定
-    val saved = context.getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE)
-        .getString("pref_app_language", null)
-    if (saved != null) return saved
-
-    val currentLocales = AppCompatDelegate.getApplicationLocales()
-    return if (currentLocales.isEmpty) {
-        "system"
-    } else {
-        currentLocales.get(0)?.toLanguageTag() ?: "system"
+    if (currentAppLocaleTag == "system") {
+        val saved = context.getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE)
+            .getString("pref_app_language", null)
+        if (saved != null) {
+            currentAppLocaleTag = saved
+        }
     }
+    return currentAppLocaleTag
 }
 
 /**
@@ -2065,7 +2084,7 @@ fun ClockSettingsDialog(
                     Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF33333A)))
 
                     val context = LocalContext.current
-                    var currentLang by remember { mutableStateOf(getCurrentLanguageTag(context)) }
+                    val currentLang = currentAppLocaleTag
 
                     Text(
                         text = stringResource(R.string.pref_language_title),
@@ -2097,7 +2116,6 @@ fun ClockSettingsDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    currentLang = code
                                     setAppLanguage(context, code)
                                 }
                                 .padding(vertical = 6.dp),
@@ -2106,7 +2124,6 @@ fun ClockSettingsDialog(
                             RadioButton(
                                 selected = isSelected,
                                 onClick = {
-                                    currentLang = code
                                     setAppLanguage(context, code)
                                 }
                             )
@@ -5495,21 +5512,6 @@ fun FlipClockFace(
 
 class MainActivity : ComponentActivity(), SensorEventListener {
 
-    override fun attachBaseContext(newBase: Context) {
-        val prefs = newBase.getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE)
-        val savedLang = prefs.getString("pref_app_language", "system") ?: "system"
-
-        if (savedLang != "system") {
-            val locale = Locale.forLanguageTag(savedLang)
-            val config = newBase.resources.configuration
-            config.setLocale(locale)
-            val localizedContext = newBase.createConfigurationContext(config)
-            super.attachBaseContext(localizedContext)
-            return
-        }
-        super.attachBaseContext(newBase)
-    }
-
     // 各品牌外螢幕狀態 ID 適配
     private val targetStateId: String by lazy {
         val brand = Build.MANUFACTURER.lowercase()
@@ -5623,7 +5625,11 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         val savedLang = getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE)
             .getString("pref_app_language", "system") ?: "system"
+        currentAppLocaleTag = savedLang // 👈 初始化目前語言 State
+
         if (savedLang != "system") {
+            val locale = Locale.forLanguageTag(savedLang)
+            Locale.setDefault(locale)
             AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(savedLang))
         }
         super.onCreate(savedInstanceState)
@@ -5661,45 +5667,65 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
 
         setContent {
-            MaterialTheme(colorScheme = DeskClockColorScheme) {
-                BackHandler(enabled = showClockScreen) {
-                    val prefs = getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE)
-                    val bypassCount = prefs.getInt("pref_non_fold_bypass_count", 0)
+            val baseConfig = androidx.compose.ui.platform.LocalConfiguration.current
 
-                    // 若是非摺疊機且已達成永久放行門檻，按返回鍵直接退出整個 App
-                    if (!hasHingeSensor && bypassCount >= 3) {
-                        finish()
+            val localizedConfig = remember(currentAppLocaleTag, baseConfig) {
+                val config = android.content.res.Configuration(baseConfig)
+                val targetLocale = if (currentAppLocaleTag == "system") {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        android.content.res.Resources.getSystem().configuration.locales[0]
                     } else {
-                        // 一般大摺疊機：恢復原本狀態並退回引導頁面
-                        isRearDisplayActive = false
-                        isNonFoldableBypassed = false
-                        showClockScreen = false
-                        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-                        safelyResetDeviceState()
+                        @Suppress("DEPRECATION")
+                        android.content.res.Resources.getSystem().configuration.locale
                     }
-                }
-
-                if (showClockScreen) {
-                    DeskClockScreen(
-                        foldState = foldState,
-                        targetStateId = targetStateId,
-                        hasHingeSensor = hasHingeSensor
-                    )
                 } else {
-                    val isClamshellDevice = hasHingeSensor && isTallAspectRatio()
-                    val isOpenedWide = lastRecordedHingeAngle >= 160f || lastRecordedHingeAngle < 0f
+                    Locale.forLanguageTag(currentAppLocaleTag)
+                }
+                config.setLocale(targetLocale)
+                config
+            }
 
-                    InitialScreen(
-                        hasHingeSensor = hasHingeSensor,
-                        isClamshell = isClamshellDevice,
-                        shouldPromptClamshell = isClamshellDevice && isOpenedWide,
-                        onEnterClockDirectly = {
-                            isNonFoldableBypassed = true
-                            showClockScreen = true
-                            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalConfiguration provides localizedConfig
+            ) {
+                MaterialTheme(colorScheme = DeskClockColorScheme) {
+                    BackHandler(enabled = showClockScreen) {
+                        val prefs = getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE)
+                        val bypassCount = prefs.getInt("pref_non_fold_bypass_count", 0)
+
+                        if (!hasHingeSensor && bypassCount >= 3) {
+                            finish()
+                        } else {
+                            isRearDisplayActive = false
+                            isNonFoldableBypassed = false
+                            showClockScreen = false
+                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                            safelyResetDeviceState()
                         }
-                    )
+                    }
+
+                    if (showClockScreen) {
+                        DeskClockScreen(
+                            foldState = foldState,
+                            targetStateId = targetStateId,
+                            hasHingeSensor = hasHingeSensor
+                        )
+                    } else {
+                        val isClamshellDevice = hasHingeSensor && isTallAspectRatio()
+                        val isOpenedWide = lastRecordedHingeAngle >= 160f || lastRecordedHingeAngle < 0f
+
+                        InitialScreen(
+                            hasHingeSensor = hasHingeSensor,
+                            isClamshell = isClamshellDevice,
+                            shouldPromptClamshell = isClamshellDevice && isOpenedWide,
+                            onEnterClockDirectly = {
+                                isNonFoldableBypassed = true
+                                showClockScreen = true
+                                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                            }
+                        )
+                    }
                 }
             }
         }

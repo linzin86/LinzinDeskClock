@@ -27,8 +27,8 @@
     <string name="layout_tip_title">探索多种屏幕版面</string>
     <string name="layout_tip_desc">除了全屏时钟外，你随时可以在“设置”中切换为双区块版面，一边看时钟、一边同步掌握迷你日历与即时天气！</string>
     <string name="layout_tip_single">单一区块</string>
-    <string name="layout_tip_dual_left">双区块 (左大右小)</string>
-    <string name="layout_tip_dual_right">双区块 (右大左小)</string>
+    <string name="layout_tip_dual_left">双区域（时钟在左）</string>
+    <string name="layout_tip_dual_right">双区域（时钟在右）</string>
 
     <!-- 非折叠设备彩蛋与提示 -->
     <string name="btn_not_foldable">不是大折叠机？</string>
@@ -48,8 +48,8 @@
     <string name="settings_title">时钟设置</string>
     <string name="layout_section_title">屏幕区块布局</string>
     <string name="layout_single">单区块模式 (100% 全屏)</string>
-    <string name="layout_dual_left">双区块模式 (左大 70% : 右小 30%)</string>
-    <string name="layout_dual_right">双区块模式 (左小 30% : 右大 70%)</string>
+    <string name="layout_dual_left">双区域（时钟固定在左，可拖动调整大小）</string>
+    <string name="layout_dual_right">双区域（时钟固定在右，可拖动调整大小）</string>
 
     <!-- 设置对话框：天气信息设置 -->
     <string name="pref_weather_title">启用当地天气信息</string>
@@ -104,7 +104,7 @@
     <string name="pref_brightness_desc_auto">跟随系统自动设置</string>
     <string name="brightness_value">亮度数值</string>
     <string name="pref_timeout_title">闲置自动关闭屏幕</string>
-    <string name="pref_timeout_desc">若时钟超时设置短于系统休眠，将在倒计时完毕后进入“黑屏伪休眠”以达到省电效果，轻触屏幕即可唤醒。</string>
+    <string name="pref_timeout_desc">闲置倒计时结束时会退出时钟，并按系统原有的屏幕超时设置关闭屏幕。自行启用可选的“仅锁定”设备管理员权限后，可在倒计时结束时锁定设备并立即关闭屏幕。</string>
     <string name="timeout_1m">1 分钟</string>
     <string name="timeout_3m">3 分钟</string>
     <string name="timeout_10m">10 分钟</string>
@@ -121,8 +121,8 @@
     <string name="layout_switch_dialog_title">建议开启双区块版面</string>
     <string name="layout_switch_dialog_desc">您目前处于“单一全屏幕”时钟模式，天气与日历行程信息需在“双区块”模式下才会显示于侧边小区块。\n\n是否要同步切换为双区块版面？</string>
     <string name="layout_switch_opt_no">否，维持单一区块</string>
-    <string name="layout_switch_opt_left">是（左大右小）</string>
-    <string name="layout_switch_opt_right">是（右大左小）</string>
+    <string name="layout_switch_opt_left">切换（时钟在左）</string>
+    <string name="layout_switch_opt_right">切换（时钟在右）</string>
 
     <!-- 更新检查相关 -->
     <string name="toast_update_available">发现新版本（%1$s）！请至设置页面底部下载更新</string>
@@ -137,11 +137,14 @@
     <string name="settings_update_available_desc">新版本已在 GitHub 上发布，建议立即前往下载更新。</string>
     <string name="settings_btn_go_to_github_releases">前往 GitHub Releases 下载</string>
 
+    <string name="settings_update_failed">检查更新失败，请确认网络连接。</string>
+    <string name="settings_update_current">目前已是最新版本（%1$s）。</string>
     <string name="legacy_android_dialog_title">旧版 Android 系统兼容性提示</string>
-    <string name="legacy_android_dialog_desc">检测到您的设备系统为 Android 12 或更早版本，部分依赖新系统 API 的功能将受限或无法运行：\n\n• 折叠屏感应：Android 10 以下不支持铰链角度与自动外屏切换，将以普通屏幕模式运行。\n• 防烧屏交错保护：像素级着色器（Shader）仅支持 Android 13 以上系统。\n• 挖孔黑边切换：刘海与挖孔边界控制仅支持 Android 9.0 以上系统。\n• 当地天气定位：旧版系统仅能读取系统缓存位置，若无法更新请先打开地图 App 定位一次。</string>
+    <string name="legacy_android_dialog_desc">检测到您的设备系统为 Android 12 或更早版本，部分依赖新系统 API 的功能将受限或无法运行：\n\n• 折叠屏感应：Android 10 以下不支持铰链角度与自动外屏切换，将以普通屏幕模式运行。\n• 防烧屏交错保护：像素级着色器（Shader）仅支持 Android 13 以上系统。\n• 挖孔黑边切换：刘海与挖孔边界控制仅支持 Android 9.0 以上系统。\n• 当地天气定位：旧版系统定位可能较慢；必要时会使用已保存坐标或网络大致位置。</string>
     <string name="legacy_android_dialog_btn_ok">我知道了</string>
 
     <string name="pref_burn_in_unsupported">需 Android 13 以上系统方可支持</string>
     <string name="pref_cutout_unsupported">需 Android 9.0 以上系统方可支持</string>
 
+    <string name="auto_legacy_unsupported">锁定自动启动需 Android 7.0 以上；您仍可手动打开时钟。</string>
 </resources>

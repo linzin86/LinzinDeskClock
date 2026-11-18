@@ -30,12 +30,12 @@ import android.util.Log
 import android.view.Window
 import android.view.WindowManager
 import android.widget.Toast
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
@@ -282,6 +282,28 @@ fun updateActivityResourcesLocale(context: Context, languageCode: String) {
     }
 }
 
+/**
+ * 將 App 內的語言代碼轉為 AppCompat 使用的 LocaleList；「跟隨系統」對應空清單
+ */
+fun languageCodeToLocaleList(languageCode: String): LocaleListCompat =
+    if (languageCode == "system") {
+        LocaleListCompat.getEmptyLocaleList()
+    } else {
+        LocaleListCompat.forLanguageTags(languageCode)
+    }
+
+/**
+ * 確保 AppCompat 的應用程式語言與目前設定一致（不一致時才寫入，避免重複觸發設定變更）。
+ * Android 13+ 交由系統 LocaleManager 保存；Android 12L 以下由 AppCompat 的
+ * autoStoreLocales 保存，並在 AppCompatActivity 建立時自動套用。
+ */
+fun syncAppCompatLocales(languageCode: String) {
+    val target = languageCodeToLocaleList(languageCode)
+    if (AppCompatDelegate.getApplicationLocales().toLanguageTags() != target.toLanguageTags()) {
+        AppCompatDelegate.setApplicationLocales(target)
+    }
+}
+
 fun setAppLanguage(context: Context, languageCode: String) {
     // 1. 儲存設定
     context.getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE)
@@ -294,6 +316,10 @@ fun setAppLanguage(context: Context, languageCode: String) {
 
     // 3. 更新 Compose State，觸發介面 0 毫秒無縫重繪
     currentAppLocaleTag = languageCode
+
+    // 4. 同步給 AppCompat，讓語言在 Activity 重建與重新開啟 App 後仍然生效
+    //    （Manifest 已宣告 locale|layoutDirection configChanges，因此不會重建 Activity）
+    syncAppCompatLocales(languageCode)
 }
 
 fun getCurrentLanguageTag(context: Context): String {
@@ -6066,7 +6092,7 @@ fun FlipClockFace(
 // 10. 主 Activity 實作 (轉軸監聽與狀態機調度)
 // ==========================================
 
-class MainActivity : ComponentActivity(), SensorEventListener {
+class MainActivity : AppCompatActivity(), SensorEventListener {
 
     // 各品牌外螢幕狀態 ID 適配
     private val targetStateId: String by lazy {
@@ -6178,6 +6204,44 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         return (maxDim / minDim) >= 2.05f
     }
 
+    /**
+     * 以 AppCompat 保存的應用程式語言為準，並與 SharedPreferences 對齊：
+     * - 首次執行：把舊版本只存在 SharedPreferences 的語言遷移給 AppCompat
+     * - 之後：若語言在系統的「應用程式語言」設定 (Android 13+) 被修改，回寫到偏好設定
+     */
+    private fun restoreAppLanguage(savedLang: String) {
+        val prefs = getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("pref_app_language_appcompat_synced", false)) {
+            prefs.edit().putBoolean("pref_app_language_appcompat_synced", true).apply()
+            syncAppCompatLocales(savedLang)
+            return
+        }
+        adoptAppCompatLocales()
+    }
+
+    /**
+     * 若 AppCompat 保存的語言與目前 App 內語言不同（例如在系統設定中被修改），
+     * 以 AppCompat 為準更新偏好設定與 Compose State
+     */
+    private fun adoptAppCompatLocales() {
+        val appCompatLocales = AppCompatDelegate.getApplicationLocales()
+        val appCompatLang = if (appCompatLocales.isEmpty) {
+            "system"
+        } else {
+            appCompatLocales[0]?.toLanguageTag() ?: "system"
+        }
+        if (languageCodeToLocaleList(appCompatLang).toLanguageTags() !=
+            languageCodeToLocaleList(currentAppLocaleTag).toLanguageTags()
+        ) {
+            getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE)
+                .edit()
+                .putString("pref_app_language", appCompatLang)
+                .apply()
+            currentAppLocaleTag = appCompatLang
+            updateActivityResourcesLocale(this, appCompatLang)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         val savedLang = getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE)
             .getString("pref_app_language", "system") ?: "system"
@@ -6186,6 +6250,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         updateActivityResourcesLocale(this, savedLang)
 
         super.onCreate(savedInstanceState)
+
+        // 與 AppCompat 保存的應用程式語言對齊（需在 super.onCreate 之後呼叫）
+        restoreAppLanguage(savedLang)
+
         enableEdgeToEdge()
 
         // 鎖死視窗底色為純黑，防止螢幕切換/旋轉瞬間漏出系統白底
@@ -6313,6 +6381,8 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        // App 執行中於系統設定修改「應用程式語言」時，先採用新的語言再套用覆寫
+        adoptAppCompatLocales()
         if (currentAppLocaleTag != "system") {
             val targetLocale = Locale.forLanguageTag(currentAppLocaleTag)
             Locale.setDefault(targetLocale)

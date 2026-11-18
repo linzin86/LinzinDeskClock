@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.LinzinDeskClock" parent="android:Theme.Material.NoActionBar">
+    <!-- MainActivity 繼承 AppCompatActivity，主題必須源自 Theme.AppCompat，
+         才能讓 AppCompatDelegate.setApplicationLocales() 的應用程式內語言生效 -->
+    <style name="Theme.LinzinDeskClock" parent="Theme.AppCompat.NoActionBar">
         <!-- 確保 Window 根圖層預設為純黑，徹底杜絕任何系統白底閃爍 -->
         <item name="android:windowBackground">@android:color/black</item>
         <item name="android:navigationBarColor">@android:color/black</item>

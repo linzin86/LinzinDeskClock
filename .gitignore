@@ -13,3 +13,5 @@
 .externalNativeBuild
 .cxx
 local.properties
+/release-archives/
+__pycache__/

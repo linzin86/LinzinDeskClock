@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">Linzin 桌鐘（舊版）</string>
+    <string name="time_mode_24">24 小時制</string>
+    <string name="time_mode_12">12 小時制</string>
+    <string name="clock_readout">時鐘：%1$s</string>
+    <string name="weather_idle">點選重新整理以載入天氣</string>
+    <string name="weather_refresh">重新整理天氣</string>
+    <string name="weather_updating">天氣更新中…</string>
+    <string name="weather_no_location">沒有可用的已儲存位置。</string>
+    <string name="weather_unavailable">天氣暫時無法更新</string>
+    <string name="weather_value">%1$.1f°C\n上次位置 · 時間未知 · 來源未知\n天氣更新於 %2$s</string>
+    <string name="calendar_permission">需要行事曆讀取權限</string>
+    <string name="calendar_unavailable">行事曆暫時無法使用</string>
+    <string name="calendar_untitled">未命名行程</string>
+    <string name="calendar_empty">沒有近期行程</string>
+</resources>

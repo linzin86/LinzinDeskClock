@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">Linzin Desk Clock (Legacy)</string>
+    <string name="time_mode_24">24-hour time</string>
+    <string name="time_mode_12">12-hour time</string>
+    <string name="clock_readout">Clock: %1$s</string>
+    <string name="weather_idle">Refresh to load weather</string>
+    <string name="weather_refresh">Refresh weather</string>
+    <string name="weather_updating">Updating weather…</string>
+    <string name="weather_no_location">No saved location is available.</string>
+    <string name="weather_unavailable">Weather update unavailable</string>
+    <string name="weather_value">%1$.1f°C\nLast saved location · Time unknown · Source unknown\nUpdated %2$s</string>
+    <string name="calendar_permission">Calendar permission is required</string>
+    <string name="calendar_unavailable">Calendar unavailable</string>
+    <string name="calendar_untitled">Untitled event</string>
+    <string name="calendar_empty">No upcoming events</string>
+</resources>

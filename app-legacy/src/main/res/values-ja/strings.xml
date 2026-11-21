@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">Linzin デスククロック（旧版）</string>
+    <string name="time_mode_24">24時間表示</string>
+    <string name="time_mode_12">12時間表示</string>
+    <string name="clock_readout">時計：%1$s</string>
+    <string name="weather_idle">更新して天気を読み込みます</string>
+    <string name="weather_refresh">天気を更新</string>
+    <string name="weather_updating">天気を更新中…</string>
+    <string name="weather_no_location">保存された位置がありません。</string>
+    <string name="weather_unavailable">天気を更新できません</string>
+    <string name="weather_value">%1$.1f°C\n前回の位置 · 時刻不明 · 取得元不明\n天気更新 %2$s</string>
+    <string name="calendar_permission">カレンダーの権限が必要です</string>
+    <string name="calendar_unavailable">カレンダーを利用できません</string>
+    <string name="calendar_untitled">無題の予定</string>
+    <string name="calendar_empty">今後の予定はありません</string>
+</resources>

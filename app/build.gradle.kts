@@ -43,6 +43,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":clock-core"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.foundation.layout)
@@ -53,6 +54,8 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation("androidx.appcompat:appcompat:1.7.0")
+    // Weather uses a current bundled TZDB because older Android time-zone names and rules are stale.
+    implementation(libs.threetenbp)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
@@ -65,10 +68,11 @@ dependencies {
 
 configurations.all {
     resolutionStrategy.eachDependency {
+        // Keep the API 21-tested Compose 1.7.8 family; Material3 stays on the BOM's 1.3.0.
         if (requested.group.startsWith("androidx.compose.") &&
             requested.group != "androidx.compose.material3"
         ) {
-            useVersion("1.7.8")
+            useVersion(libs.versions.compose.get())
         }
     }
 }

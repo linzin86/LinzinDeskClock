@@ -1,0 +1,2 @@
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/tk_*,@drawable/ttn_*,@drawable/rafm_*,@drawable/abw_*,@drawable/oet_*,@drawable/zmg_*,@drawable/pp_*,@drawable/fft_*" />

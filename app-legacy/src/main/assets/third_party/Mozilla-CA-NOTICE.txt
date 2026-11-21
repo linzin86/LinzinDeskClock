@@ -1,0 +1,9 @@
+Mozilla CA root certificates, extracted by curl from Mozilla NSS.
+Source: https://curl.se/ca/cacert.pem
+Certificate data date: 2026-11-05 04:12:01 GMT
+Original PEM SHA256: 427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285
+Frozen BKS SHA256: 4ee47acf292af6d934997924adc038b9218159fce081a5a3a38e97c0aa26ff0d
+118 certificates. Converted with BC 1.87 BKS using an empty public password.
+The signed APK protects this certificate-only store; it contains no private keys.
+License: Mozilla Public License 2.0, included in MPL-2.0.txt.
+The bundle is fixed per app build; updating it requires re-verification.

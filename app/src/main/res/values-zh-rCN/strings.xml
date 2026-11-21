@@ -138,10 +138,20 @@
     <string name="settings_btn_go_to_github_releases">前往 GitHub Releases 下载</string>
 
     <string name="legacy_android_dialog_title">旧版 Android 系统兼容性提示</string>
-    <string name="legacy_android_dialog_desc">检测到您的设备系统为 Android 12 或更早版本，部分依赖新系统 API 的功能将受限或无法运行：\n\n• 折叠屏感应：Android 10 以下不支持铰链角度与自动外屏切换，将以普通屏幕模式运行。\n• 防烧屏交错保护：像素级着色器（Shader）仅支持 Android 13 以上系统。\n• 挖孔黑边切换：刘海与挖孔边界控制仅支持 Android 9.0 以上系统。\n• 当地天气定位：旧版系统仅能读取系统缓存位置，若无法更新请先打开地图 App 定位一次。</string>
+    <string name="legacy_android_dialog_desc">普通时钟模式支持 Android 5.0（API 21）以上。其他功能取决于系统与设备能力：\n\n• 铰链感应：需要 Android 11（API 30）与铰链传感器。外屏切换另需 OEM 指令与权限支持，不能仅凭系统版本保证成功；无此能力时可使用普通手机模式。\n• 防烧屏保护：RuntimeShader 需要 Android 13（API 33）。\n• 挖孔边界控制：需要 Android 9（API 28）。\n• 天气定位：Android 5–10 支持 Listener 主动定位，Android 11 起支持单次定位。请授予定位权限并启用可用定位来源；天气另需 HTTPS 连接。</string>
     <string name="legacy_android_dialog_btn_ok">我知道了</string>
 
     <string name="pref_burn_in_unsupported">需 Android 13 以上系统方可支持</string>
     <string name="pref_cutout_unsupported">需 Android 9.0 以上系统方可支持</string>
 
+    <string name="weather_update_unavailable">尚未更新 · %1$s 的天气</string>
+    <string name="weather_retry">点击重试</string>
+    <string name="weather_last_location">上次位置 · %1$s · %2$s</string>
+    <string name="weather_location_time_unknown">时间未知</string>
+    <string name="weather_location_source_unknown">来源未知</string>
+    <string name="weather_location_source_gps">GPS</string>
+    <string name="weather_location_source_network">网络</string>
+    <string name="weather_location_source_passive">被动定位</string>
+    <string name="display_switch_unavailable">无法确认外屏切换成功，仍可使用普通时钟模式。</string>
+    <string name="display_reset_failed">无法确认显示状态已恢复，请检查设备的显示状态。</string>
 </resources>

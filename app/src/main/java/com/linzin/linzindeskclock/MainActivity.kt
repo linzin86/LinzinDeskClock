@@ -18,7 +18,6 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.location.Geocoder
 import android.location.Location
 import android.location.LocationManager
 import android.os.BatteryManager
@@ -160,6 +159,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -191,19 +191,6 @@ enum class ClockLayoutMode {
     DUAL_LEFT_LARGE,
     DUAL_RIGHT_LARGE
 }
-
-data class HourlyWeather(
-    val hourOfDay: Int,
-    val tempC: Float,
-    val weatherCode: Int
-)
-
-data class WeatherInfo(
-    val cityName: String,
-    val currentTempC: Float,
-    val currentWeatherCode: Int,
-    val hourlyList: List<HourlyWeather>
-)
 
 data class BatteryState(
     val level: Int = 100,
@@ -468,6 +455,8 @@ fun applyDisplayCutoutMode(window: Window?, extendCutout: Boolean) {
  */
 private fun isValidLocation(loc: Location?): Boolean {
     if (loc == null) return false
+    if (!loc.latitude.isFinite() || !loc.longitude.isFinite() ||
+        loc.latitude !in -90.0..90.0 || loc.longitude !in -180.0..180.0) return false
     return kotlin.math.abs(loc.latitude) > 0.001 || kotlin.math.abs(loc.longitude) > 0.001
 }
 
@@ -494,7 +483,8 @@ suspend fun fetchBestLocation(context: Context): Location? = withContext(Dispatc
     val lastLocation = candidates.maxByOrNull { it.time }
 
     // 若有效快取在 10 分鐘內，直接返回以節省電量
-    if (lastLocation != null && (System.currentTimeMillis() - lastLocation.time) < 10 * 60 * 1000L) {
+    if (lastLocation != null && lastLocation.time > 0 &&
+        (System.currentTimeMillis() - lastLocation.time) in 0 until 10 * 60 * 1000L) {
         return@withContext lastLocation
     }
 
@@ -533,81 +523,56 @@ suspend fun fetchBestLocation(context: Context): Location? = withContext(Dispatc
         if (providers.isEmpty()) return@withContext lastLocation
 
         withTimeoutOrNull(6000L) {
-            suspendCancellableCoroutine<Location?> { cont ->
-                val listener = object : android.location.LocationListener {
-                    override fun onLocationChanged(location: Location) {
-                        if (!isValidLocation(location)) return // 忽略剛啟動時的 0.0 座標
-                        locationManager.removeUpdates(this)
-                        if (cont.isActive) cont.resume(location)
+            var listener: android.location.LocationListener? = null
+            awaitLegacyLocation(
+                providers, lastLocation,
+                register = { provider, callback ->
+                    if (listener == null) listener = object : android.location.LocationListener {
+                        override fun onLocationChanged(location: Location) {
+                            if (isValidLocation(location)) callback(location)
+                        }
+                        @Deprecated("Deprecated in Java")
+                        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+                        override fun onProviderEnabled(provider: String) {}
+                        override fun onProviderDisabled(provider: String) {}
                     }
-                    @Deprecated("Deprecated in Java")
-                    override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
-                    override fun onProviderEnabled(provider: String) {}
-                    override fun onProviderDisabled(provider: String) {}
-                }
-
-                try {
-                    providers.forEach { provider ->
-                        locationManager.requestLocationUpdates(
-                            provider, 0L, 0f, listener, android.os.Looper.getMainLooper()
-                        )
-                    }
-                } catch (_: Exception) {
-                    if (cont.isActive) cont.resume(lastLocation)
-                }
-
-                cont.invokeOnCancellation {
-                    try { locationManager.removeUpdates(listener) } catch (_: Exception) {}
-                }
-            }
+                    locationManager.requestLocationUpdates(
+                        provider, 0L, 0f, listener!!, android.os.Looper.getMainLooper()
+                    )
+                },
+                remove = { listener?.let { locationManager.removeUpdates(it) } },
+                onCleanupError = { Log.w("DeskClockLocation", "Unable to remove location listener", it) }
+            )
         } ?: lastLocation
     }
 }
 
 /**
- * 整合抓取定位（優先真實定位 -> 歷史有效座標 -> 室內 IP 備援）、反向地理編碼與 Open-Meteo 天氣
+ * 整合系統／歷史定位、反向地理編碼與 HTTPS 天氣；無安全 IP 服務時不使用 IP 備援
  */
 suspend fun fetchAndApplyWeather(
     context: Context,
     currentLocationStr: String,
+    systemGeocode: (Double, Double) -> String? = { latitude, longitude ->
+        systemCityName(context, latitude, longitude)
+    },
     onResult: (WeatherInfo?) -> Unit
 ) = withContext(Dispatchers.IO) {
     try {
         val prefs = context.getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE)
         val location = fetchBestLocation(context)
 
-        var lat: Double? = null
-        var lon: Double? = null
-        var detectedCity: String? = null
+        val position = if (location != null && isValidLocation(location)) {
+            rememberWeatherLocation(prefs, location, System.currentTimeMillis())
+        } else readWeatherLocation(prefs)
 
-        if (location != null && isValidLocation(location)) {
-            // 1. 成功取得硬體/系統定位，更新並持久化保存座標供室內備援使用
-            lat = location.latitude
-            lon = location.longitude
-            prefs.edit()
-                .putString("pref_last_valid_lat", lat.toString())
-                .putString("pref_last_valid_lon", lon.toString())
-                .apply()
-        } else {
-            // 2. 室內無法取得即時定位時，優先沿用上一次儲存的真實座標
-            val savedLat = prefs.getString("pref_last_valid_lat", null)?.toDoubleOrNull()
-            val savedLon = prefs.getString("pref_last_valid_lon", null)?.toDoubleOrNull()
-            if (savedLat != null && savedLon != null) {
-                lat = savedLat
-                lon = savedLon
-            } else {
-                // 3. 若該裝置從未取得過任何定位，才使用 IP 定位備援
-                val ipLoc = fetchIpLocationFallback()
-                if (ipLoc != null) {
-                    lat = ipLoc.first
-                    lon = ipLoc.second
-                    detectedCity = ipLoc.third
-                }
-            }
+        val finalLat = position?.latitude
+        val finalLon = position?.longitude
+        if (finalLat == null || finalLon == null || !finalLat.isFinite() || !finalLon.isFinite() ||
+            finalLat !in -90.0..90.0 || finalLon !in -180.0..180.0) {
+            withContext(Dispatchers.Main) { onResult(null) }
+            return@withContext
         }
-
-        val finalLat = lat ?: 24.838
-        val finalLon = lon ?: 121.017
 
         val langTag = if (currentAppLocaleTag == "system") {
             getSystemDefaultLocale().toLanguageTag()
@@ -615,23 +580,7 @@ suspend fun fetchAndApplyWeather(
             currentAppLocaleTag
         }
 
-        // 1. 優先嘗試 Android 原生 Geocoder（僅取城市、縣市、鄉鎮區層級，不取省/州級 adminArea）
-        try {
-            val geocoder = Geocoder(context, Locale.getDefault())
-            @Suppress("DEPRECATION")
-            val addresses = geocoder.getFromLocation(finalLat, finalLon, 1)
-            if (!addresses.isNullOrEmpty()) {
-                val addr = addresses[0]
-                val geoCity = addr.locality
-                    ?: addr.subAdminArea
-                    ?: addr.subLocality
-                if (!geoCity.isNullOrBlank()) {
-                    detectedCity = geoCity.trim()
-                }
-            }
-        } catch (_: Exception) {
-            // 舊版 GMS 服務異常時略過
-        }
+        var detectedCity = systemGeocode(finalLat, finalLon)
 
         // 2. 若仍無具體城市名稱，使用線上反向地理編碼取得 Level 5~8 行政區
         if (detectedCity.isNullOrBlank()) {
@@ -641,63 +590,22 @@ suspend fun fetchAndApplyWeather(
         val finalCityName = detectedCity?.takeIf { it.isNotBlank() } ?: currentLocationStr
         val data = fetchOpenMeteoWeather(finalLat, finalLon, finalCityName)
         withContext(Dispatchers.Main) {
-            onResult(data)
+            onResult(data?.copy(location = position))
         }
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Exception) {
         Log.e("DeskClockWeather", "Failed to fetch and apply weather", e)
     }
 }
 
 /**
- * 室內 IP 定位備援（僅讀取 city 欄位，不退回讀取省/州級 regionName）
- */
-private fun fetchIpLocationFallback(): Triple<Double, Double, String?>? {
-    return try {
-        val conn = (URL("http://ip-api.com/json/?fields=status,city,lat,lon").openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = 5000
-            readTimeout = 5000
-            connect()
-        }
-        val text = conn.inputStream.bufferedReader().use { it.readText() }
-        val json = JSONObject(text)
-        if (json.optString("status") == "success") {
-            val lat = json.getDouble("lat")
-            val lon = json.getDouble("lon")
-            val city = json.optString("city", "").trim().takeIf { it.isNotBlank() }
-            Triple(lat, lon, city)
-        } else {
-            null
-        }
-    } catch (_: Exception) {
-        null
-    }
-}
-
-/**
  * 線上反向地理編碼備援（嚴格限定為城市／鄉鎮區層級，排除國家與一級省州層級）
  */
-private fun fetchCityNameFallback(lat: Double, lon: Double, languageTag: String): String? {
+private suspend fun fetchCityNameFallback(lat: Double, lon: Double, languageTag: String): String? {
     return try {
         val urlStr = "https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=$lat&longitude=$lon&localityLanguage=$languageTag"
-        val connection = try {
-            (URL(urlStr).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 6000
-                readTimeout = 6000
-                connect()
-            }
-        } catch (e: javax.net.ssl.SSLException) {
-            val httpUrlStr = urlStr.replaceFirst("https://", "http://")
-            (URL(httpUrlStr).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 6000
-                readTimeout = 6000
-                connect()
-            }
-        }
-
-        val responseText = connection.inputStream.bufferedReader().use { it.readText() }
+        val responseText = readHttpsJson(urlStr)
         val json = JSONObject(responseText)
 
         val countryName = json.optString("countryName", "").trim()
@@ -728,49 +636,24 @@ private fun fetchCityNameFallback(lat: Double, lon: Double, languageTag: String)
 
         // 若無法精確解析到城市層級，回傳 null 交由上層顯示「目前位置 / 現在地」
         null
+    } catch (e: CancellationException) {
+        throw e
     } catch (_: Exception) {
         null
     }
 }
 
 /**
- * 查詢 Open-Meteo 天氣預報 API 並解析（含連線容錯與 HTTP 備援）
+ * 查詢並解析 HTTPS 天氣；傳輸失敗不降級明文
  */
-suspend fun fetchOpenMeteoWeather(lat: Double, lon: Double, cityName: String): WeatherInfo? = withContext(Dispatchers.IO) {
+suspend fun fetchOpenMeteoWeather(
+    lat: Double, lon: Double, cityName: String, now: () -> Long = System::currentTimeMillis
+): WeatherInfo? = withContext(Dispatchers.IO) {
     // 加上 forecast_days=2 只抓今明兩天（48小時），大幅縮小封包體積並加快回應速度
-    val httpsUrl = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code&hourly=temperature_2m,weather_code&forecast_days=2&timezone=auto"
-    val httpUrl = httpsUrl.replaceFirst("https://", "http://")
-
-    fun requestJson(targetUrl: String, timeoutMs: Int): String {
-        val conn = (URL(targetUrl).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = timeoutMs
-            readTimeout = timeoutMs
-            useCaches = false
-            // 避免重複使用可能已半斷線的 Keep-Alive Socket，確保每次手動重整都建立全新連線
-            setRequestProperty("Connection", "close")
-            setRequestProperty("User-Agent", "LinzinDeskClock-Android")
-        }
-        try {
-            val code = conn.responseCode
-            if (code !in 200..299) {
-                throw java.io.IOException("HTTP error code: $code")
-            }
-            return conn.inputStream.bufferedReader().use { it.readText() }
-        } finally {
-            conn.disconnect()
-        }
-    }
+    val httpsUrl = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code&hourly=temperature_2m,weather_code&forecast_days=2&timezone=auto&timeformat=unixtime"
 
     try {
-        // 1. 先嘗試 HTTPS（6 秒逾時，避免握手卡死拖太久）
-        // 2. 無論是憑證過期 (SSLException) 或握手逾時 (SocketTimeoutException)，皆立即改走 HTTP 備援
-        val responseText = try {
-            requestJson(httpsUrl, timeoutMs = 6000)
-        } catch (e: Exception) {
-            Log.w("DeskClockWeather", "HTTPS failed (${e.javaClass.simpleName}), retrying via HTTP...")
-            requestJson(httpUrl, timeoutMs = 8000)
-        }
+        val responseText = readHttpsJson(httpsUrl)
 
         val root = JSONObject(responseText)
 
@@ -783,42 +666,18 @@ suspend fun fetchOpenMeteoWeather(lat: Double, lon: Double, cityName: String): W
         val temps = hourlyObj.getJSONArray("temperature_2m")
         val codes = hourlyObj.getJSONArray("weather_code")
 
-        val nowCal = Calendar.getInstance()
-        val currentHourInt = nowCal.get(Calendar.HOUR_OF_DAY)
-
-        val hourlyResult = mutableListOf<HourlyWeather>()
-        val inFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm", Locale.US)
-
-        for (i in 0 until times.length()) {
-            val tStr = times.getString(i)
-            val date = inFormat.parse(tStr)
-            if (date != null) {
-                val cal = Calendar.getInstance().apply { time = date }
-                if (cal.get(Calendar.HOUR_OF_DAY) >= currentHourInt && cal.get(Calendar.DAY_OF_YEAR) == nowCal.get(Calendar.DAY_OF_YEAR)) {
-                    val hour = cal.get(Calendar.HOUR_OF_DAY)
-                    val t = temps.getDouble(i).toFloat()
-                    val c = codes.getInt(i)
-                    hourlyResult.add(HourlyWeather(hourOfDay = hour, tempC = t, weatherCode = c))
-                    if (hourlyResult.size == 4) break
-                }
-            }
+        require(times.length() == temps.length() && times.length() == codes.length())
+        val timeZoneId = root.getString("timezone")
+        val hours = (0 until times.length()).map { index ->
+            val seconds = times.getLong(index)
+            require(seconds in Long.MIN_VALUE / 1000..Long.MAX_VALUE / 1000)
+            val timestamp = seconds * 1000
+            val hour = forecastHour(timestamp, timeZoneId)
+            val temperature = temps.getDouble(index).toFloat()
+            require(temperature.isFinite())
+            HourlyWeather(hour, temperature, codes.getInt(index), timestamp, timeZoneId)
         }
-
-        var fallbackIdx = 0
-        while (hourlyResult.size < 4 && fallbackIdx < times.length()) {
-            val tStr = times.getString(fallbackIdx)
-            val date = inFormat.parse(tStr)
-            if (date != null) {
-                val cal = Calendar.getInstance().apply { time = date }
-                val hour = cal.get(Calendar.HOUR_OF_DAY)
-                val t = temps.getDouble(fallbackIdx).toFloat()
-                val c = codes.getInt(fallbackIdx)
-                if (hourlyResult.none { it.hourOfDay == hour }) {
-                    hourlyResult.add(HourlyWeather(hourOfDay = hour, tempC = t, weatherCode = c))
-                }
-            }
-            fallbackIdx++
-        }
+        val hourlyResult = selectUpcomingForecast(hours, now(), timeZoneId)
 
         WeatherInfo(
             cityName = cityName,
@@ -826,6 +685,8 @@ suspend fun fetchOpenMeteoWeather(lat: Double, lon: Double, cityName: String): W
             currentWeatherCode = currentCode,
             hourlyList = hourlyResult
         )
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Exception) {
         Log.e("DeskClockWeather", "Failed to fetch Open-Meteo", e)
         null
@@ -3717,9 +3578,7 @@ fun DeskClockScreen(
                 if ((hasFine || hasCoarse) && weatherEnabled && layoutMode != ClockLayoutMode.SINGLE && weatherInfo == null) {
                     CoroutineScope(Dispatchers.IO).launch {
                         fetchAndApplyWeather(context, currentLocationStr) { data ->
-                            if (data != null) {
-                                weatherInfo = data
-                            }
+                            weatherInfo = weatherAfterRefresh(weatherInfo, data)
                             isWeatherRefreshing = false
                         }
                     }
@@ -3744,7 +3603,7 @@ fun DeskClockScreen(
                 while (true) {
                     isWeatherRefreshing = true
                     fetchAndApplyWeather(context, currentLocationStr) { data ->
-                        weatherInfo = data
+                        weatherInfo = weatherAfterRefresh(weatherInfo, data)
                         isWeatherRefreshing = false
                     }
                     isWeatherRefreshing = false
@@ -4680,6 +4539,8 @@ fun SideWeatherWidget(
                         fontWeight = FontWeight.Bold
                     )
                 }
+
+                WeatherStatusLabels(weatherInfo, isRefreshing, onRefresh)
 
                 BoxWithConstraints(
                     modifier = Modifier

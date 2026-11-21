@@ -143,4 +143,12 @@
 
     <string name="pref_burn_in_unsupported">Android 13 以降が必要です</string>
     <string name="pref_cutout_unsupported">Android 9.0 以降が必要です</string>
+    <string name="weather_update_unavailable">更新できません · %1$s の天気</string>
+    <string name="weather_retry">タップして再試行</string>
+    <string name="weather_last_location">前回の位置 · %1$s · %2$s</string>
+    <string name="weather_location_time_unknown">時刻不明</string>
+    <string name="weather_location_source_unknown">取得元不明</string>
+    <string name="weather_location_source_gps">GPS</string>
+    <string name="weather_location_source_network">ネットワーク</string>
+    <string name="weather_location_source_passive">パッシブ</string>
 </resources>

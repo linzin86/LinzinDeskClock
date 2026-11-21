@@ -143,4 +143,6 @@
 
     <string name="pref_burn_in_unsupported">Android 13 以降が必要です</string>
     <string name="pref_cutout_unsupported">Android 9.0 以降が必要です</string>
+    <string name="weather_update_unavailable">更新できません · %1$s の天気</string>
+    <string name="weather_retry">タップして再試行</string>
 </resources>

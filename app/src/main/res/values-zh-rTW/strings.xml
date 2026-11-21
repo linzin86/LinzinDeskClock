@@ -143,4 +143,6 @@
     <string name="pref_burn_in_unsupported">需 Android 13 以上系統方可支援</string>
     <string name="pref_cutout_unsupported">需 Android 9.0 以上系統方可支援</string>
 
+    <string name="weather_update_unavailable">尚未更新 · %1$s 的天氣</string>
+    <string name="weather_retry">點擊重試</string>
 </resources>

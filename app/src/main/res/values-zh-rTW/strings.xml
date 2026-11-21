@@ -143,4 +143,6 @@
     <string name="pref_burn_in_unsupported">需 Android 13 以上系統方可支援</string>
     <string name="pref_cutout_unsupported">需 Android 9.0 以上系統方可支援</string>
 
+    <string name="display_switch_unavailable">無法確認外螢幕切換成功，仍可使用一般時鐘模式。</string>
+    <string name="display_reset_failed">無法確認顯示狀態已還原，請檢查裝置的顯示狀態。</string>
 </resources>

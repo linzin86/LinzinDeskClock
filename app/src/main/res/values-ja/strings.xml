@@ -143,4 +143,6 @@
 
     <string name="pref_burn_in_unsupported">Android 13 以降が必要です</string>
     <string name="pref_cutout_unsupported">Android 9.0 以降が必要です</string>
+    <string name="display_switch_unavailable">外側ディスプレイの切り替えを確認できません。通常の時計モードを利用できます。</string>
+    <string name="display_reset_failed">ディスプレイ状態の復元を確認できません。端末の表示状態を確認してください。</string>
 </resources>

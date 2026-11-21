@@ -65,10 +65,11 @@ dependencies {
 
 configurations.all {
     resolutionStrategy.eachDependency {
+        // Keep the API 21-tested Compose 1.7.8 family; Material3 stays on the BOM's 1.3.0.
         if (requested.group.startsWith("androidx.compose.") &&
             requested.group != "androidx.compose.material3"
         ) {
-            useVersion("1.7.8")
+            useVersion(libs.versions.compose.get())
         }
     }
 }

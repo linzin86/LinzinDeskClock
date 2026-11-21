@@ -1,0 +1,28 @@
+<resources>
+    <string name="app_name">Linzin 桌钟（旧版）</string>
+    <string name="time_mode_24">24 小时制</string>
+    <string name="time_mode_12">12 小时制</string>
+    <string name="clock_readout">时钟：%1$s</string>
+    <string name="weather_idle">点击刷新以加载天气</string>
+    <string name="weather_refresh">刷新天气</string>
+    <string name="weather_updating">天气更新中…</string>
+    <string name="weather_no_location">没有可用的已保存位置。</string>
+    <string name="weather_unavailable">天气暂时无法更新</string>
+    <string name="weather_value">%1$.1f°C\n上次位置 · 时间未知 · 来源未知\n天气更新于 %2$s</string>
+    <string name="calendar_permission">需要日历读取权限</string>
+    <string name="calendar_unavailable">日历暂时无法使用</string>
+    <string name="calendar_untitled">未命名行程</string>
+    <string name="calendar_empty">没有近期行程</string>
+    <string name="clock_style">切换时钟样式</string>
+    <string name="layout_single">单区时钟</string>
+    <string name="layout_left">双区：左侧大时钟</string>
+    <string name="layout_right">双区：右侧大时钟</string>
+    <string name="switch_page">切换侧栏页面</string>
+    <string name="page_calendar">日历</string>
+    <string name="page_weather">天气</string>
+    <string name="lock_controls">锁定</string>
+    <string name="unlock_controls">解锁</string>
+    <string name="calendar_disabled">近期行程已关闭</string>
+    <string name="show_seconds">显示秒数</string>
+    <string name="hide_seconds">隐藏秒数</string>
+</resources>

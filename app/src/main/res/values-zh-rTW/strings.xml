@@ -136,7 +136,7 @@
 
     <!-- Android 12 以下老機型提示視窗 -->
     <string name="legacy_android_dialog_title">舊版 Android 系統相容性提示</string>
-    <string name="legacy_android_dialog_desc">偵測到您的裝置系統為 Android 12 或更早版本，部分依賴新系統 API 的功能將受限或無法運作：\n\n• 摺疊機感應：Android 10 以下不支援轉軸角度與自動外螢幕切換，將以一般螢幕模式執行。\n• 防烙印交錯保護：像素級著色器（Shader）僅支援 Android 13 以上系統。\n• 挖孔黑邊切換：瀏海與挖孔邊界控制僅支援 Android 9.0 以上系統。\n• 當地天氣定位：舊版系統僅能讀取系統快取位置，若無法更新請先開啟地圖 App 定位一次。</string>
+    <string name="legacy_android_dialog_desc">一般時鐘模式支援 Android 5.0（API 21）以上。其他功能依系統與裝置能力而定：\n\n• 轉軸感應：需要 Android 11（API 30）與轉軸感應器。外螢幕切換另需 OEM 指令與權限支援，不能只憑系統版本保證成功；無能力時可使用一般手機模式。\n• 防烙印保護：RuntimeShader 需要 Android 13（API 33）。\n• 挖孔邊界控制：需要 Android 9（API 28）。\n• 天氣定位：Android 5–10 支援 Listener 主動定位，Android 11 起支援單次定位。請授予定位權限並啟用可用定位來源；天氣另需 HTTPS 連線。</string>
     <string name="legacy_android_dialog_btn_ok">我知道了</string>
 
     <!-- 設定頁面不支援提示 -->

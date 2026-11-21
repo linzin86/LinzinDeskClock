@@ -137,7 +137,7 @@
     <string name="settings_btn_go_to_github_releases">Download from GitHub Releases</string>
 
     <string name="legacy_android_dialog_title">Legacy Android Compatibility Notice</string>
-    <string name="legacy_android_dialog_desc">Your device is running Android 12 or earlier. Some features that rely on newer system APIs will be unavailable or limited:\n\n• Foldable Sensing: Hinge angle and auto cover-screen switching require Android 11+. Standard display mode will be used.\n• Burn-in Pixel Grid Protection: RuntimeShader requires Android 13 or later.\n• Cutout Black Bar Toggle: Display cutout insets require Android 9.0 or later.\n• Weather Location: Older versions rely on cached system location. Open a Maps app once if weather fails to update.</string>
+    <string name="legacy_android_dialog_desc">General clock mode supports Android 5.0 (API 21) or later. Other features depend on system and device capabilities:\n\n• Hinge sensing: Requires Android 11 (API 30) and a hinge sensor. Cover-display switching also needs OEM command support and permission; it is not guaranteed by OS version. Use ordinary-phone mode when unavailable.\n• Burn-in protection: RuntimeShader requires Android 13 (API 33).\n• Cutout control: Requires Android 9 (API 28).\n• Weather location: Android 5–10 can actively request location with a listener; Android 11 adds single-fix requests. Grant location permission and enable a location provider. Weather also needs HTTPS connectivity.</string>
     <string name="legacy_android_dialog_btn_ok">Got It</string>
 
     <string name="pref_burn_in_unsupported">Requires Android 13 or later</string>

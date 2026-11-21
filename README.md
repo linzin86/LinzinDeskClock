@@ -41,9 +41,11 @@
 
 ### 📱 相容性說明
 
-- **支援機種**：近代具備轉軸感應器之大摺疊機皆可順利觸發進入桌面時鐘模式。
+- **一般時鐘**：最低 Android 5.0（API 21）。API 21 已驗證一般手機核心操作；這不代表所有功能或裝置皆已實測。
+- **摺疊感應與外螢幕**：標準轉軸感應器需要 Android 11（API 30）及對應硬體；外螢幕切換另需 OEM 指令與權限支援，不能只憑品牌或系統版本保證成功。
 - **小摺疊（Flip）與直立機**：進入 APP 點擊「不是大摺疊機？」按鈕，可手動放行體驗橫向全螢幕時鐘（可能需要你付出一些代價）。
-- **系統需求**：支援 Android 12（含）以上版本。
+- **其他能力限制**：挖孔邊界控制需要 Android 9（API 28）；RuntimeShader 防烙印需要 Android 13（API 33）。較舊系統保留一般時鐘，這些能力不適用。
+- **定位與天氣**：Android 5–10（API 21–29）支援 LocationListener 主動定位，Android 11 起支援單次定位；仍需定位授權、可用定位來源與 HTTPS 連線，並非只能讀取位置快取。
 
 ---
 
@@ -64,9 +66,11 @@
 
 ### 📱 兼容性说明
 
-- **支持机型**：近代具备转轴传感器的大折叠手机均可顺利触发进入桌面时钟模式。
+- **普通时钟**：最低 Android 5.0（API 21）。API 21 已验证普通手机核心操作；这不代表所有功能或设备均已实测。
+- **折叠感应与外屏**：标准铰链传感器需要 Android 11（API 30）及对应硬件；外屏切换另需 OEM 指令与权限支持，不能仅凭品牌或系统版本保证成功。
 - **小折叠（Flip）与直板机**：进入 APP 点击“不是大折叠机？”按钮，可手动放行体验横屏桌面时钟（可能需要你付出一点代价）。
-- **系统要求**：支持 Android 12（含）以上版本。
+- **其他能力限制**：挖孔边界控制需要 Android 9（API 28）；RuntimeShader 防烧屏需要 Android 13（API 33）。较旧系统保留普通时钟，这些能力不适用。
+- **定位与天气**：Android 5–10（API 21–29）支持 LocationListener 主动定位，Android 11 起支持单次定位；仍需定位权限、可用定位来源与 HTTPS 连接，并非只能读取位置缓存。
 
 ---
 
@@ -87,9 +91,11 @@
 
 ### 📱 Compatibility
 
-- **Supported Devices**: Most modern large foldable phones equipped with a hinge sensor.
+- **General clock**: Android 5.0 (API 21) or later. The ordinary-phone core flow has been verified on API 21; this does not establish every feature or device as tested.
+- **Hinge and cover display**: Standard hinge sensing requires Android 11 (API 30) and suitable hardware. Cover-display switching also requires working OEM commands and permissions; brand or OS version alone does not guarantee support.
 - **Flips & Slab Phones**: Tap the "Not a Foldable?" button on the initial screen to bypass and enjoy the full-screen desk clock.
-- **OS Requirement**: Android 12 and above.
+- **Other capabilities**: Cutout control requires Android 9 (API 28); RuntimeShader burn-in protection requires Android 13 (API 33). General clock mode remains available on older systems, with these capabilities unavailable.
+- **Location and weather**: Android 5–10 (API 21–29) can actively request location through LocationListener; Android 11 adds single-fix requests. Location permission, an available provider and HTTPS connectivity are still required; older versions are not limited to cached location.
 
 ---
 

@@ -138,9 +138,19 @@
     <string name="settings_btn_go_to_github_releases">GitHub Releases でダウンロード</string>
 
     <string name="legacy_android_dialog_title">旧バージョン Android の互換性について</string>
-    <string name="legacy_android_dialog_desc">お使いの端末は Android 12 以前のため、新しいシステム API を必要とする一部機能は制限または利用できません：\n\n• 折りたたみ検知：ヒンジ角度とカバー画面の自動切替は Android 11 以降が必要です（通常画面モードで動作します）。\n• 焼き付き防止グリッド：シェーダー処理には Android 13 以降が必要です。\n• パンチホール黒帯切替：切り欠き領域の制御は Android 9.0 以降が必要です。\n• 天気の位置情報：キャッシュされた位置情報のみ使用します。更新されない場合は地図アプリを一度開いてください。</string>
+    <string name="legacy_android_dialog_desc">通常の時計モードは Android 5.0（API 21）以降に対応します。その他の機能は OS と端末の能力に依存します：\n\n• ヒンジ検知：Android 11（API 30）とヒンジセンサーが必要です。カバー画面の切替には OEM コマンドと権限も必要で、OS バージョンだけでは保証できません。利用できない場合は通常端末モードを使えます。\n• 焼き付き防止：RuntimeShader は Android 13（API 33）以降が必要です。\n• 切り欠き領域の制御：Android 9（API 28）以降が必要です。\n• 天気の位置情報：Android 5–10 でも Listener による測位ができ、Android 11 以降は単発測位に対応します。位置情報の権限と利用可能な測位元を有効にしてください。天気には HTTPS 接続も必要です。</string>
     <string name="legacy_android_dialog_btn_ok">了解しました</string>
 
     <string name="pref_burn_in_unsupported">Android 13 以降が必要です</string>
     <string name="pref_cutout_unsupported">Android 9.0 以降が必要です</string>
+    <string name="weather_update_unavailable">更新できません · %1$s の天気</string>
+    <string name="weather_retry">タップして再試行</string>
+    <string name="weather_last_location">前回の位置 · %1$s · %2$s</string>
+    <string name="weather_location_time_unknown">時刻不明</string>
+    <string name="weather_location_source_unknown">取得元不明</string>
+    <string name="weather_location_source_gps">GPS</string>
+    <string name="weather_location_source_network">ネットワーク</string>
+    <string name="weather_location_source_passive">パッシブ</string>
+    <string name="display_switch_unavailable">外側ディスプレイの切り替えを確認できません。通常の時計モードを利用できます。</string>
+    <string name="display_reset_failed">ディスプレイ状態の復元を確認できません。端末の表示状態を確認してください。</string>
 </resources>

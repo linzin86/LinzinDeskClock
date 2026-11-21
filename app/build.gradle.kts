@@ -53,6 +53,8 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation("androidx.appcompat:appcompat:1.7.0")
+    // Weather uses a current bundled TZDB because older Android time-zone names and rules are stale.
+    implementation(libs.threetenbp)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

@@ -4,7 +4,6 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.BroadcastReceiver
-import android.content.ContentUris
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
@@ -18,13 +17,9 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.location.Geocoder
-import android.location.Location
-import android.location.LocationManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
-import android.provider.CalendarContract
 import android.provider.Settings
 import android.util.Log
 import android.view.Window
@@ -153,19 +148,20 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
-import kotlin.coroutines.resume
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 
 // ==========================================
@@ -191,19 +187,6 @@ enum class ClockLayoutMode {
     DUAL_LEFT_LARGE,
     DUAL_RIGHT_LARGE
 }
-
-data class HourlyWeather(
-    val hourOfDay: Int,
-    val tempC: Float,
-    val weatherCode: Int
-)
-
-data class WeatherInfo(
-    val cityName: String,
-    val currentTempC: Float,
-    val currentWeatherCode: Int,
-    val hourlyList: List<HourlyWeather>
-)
 
 data class BatteryState(
     val level: Int = 100,
@@ -308,144 +291,6 @@ fun getCurrentLanguageTag(context: Context): String {
 }
 
 /**
- * 查詢未來 48 小時內的日曆行程（支援單日、跨日全天行程與進行中事件）
- */
-fun fetchUpcomingCalendarEvents(context: Context): List<UpcomingCalendarEvent> {
-    val hasPermission = ContextCompat.checkSelfPermission(
-        context,
-        Manifest.permission.READ_CALENDAR
-    ) == PackageManager.PERMISSION_GRANTED
-    if (!hasPermission) return emptyList()
-
-    val eventList = mutableListOf<UpcomingCalendarEvent>()
-    val now = System.currentTimeMillis()
-    val endWindow = now + (48 * 60 * 60 * 1000L)
-
-    val builder = CalendarContract.Instances.CONTENT_URI.buildUpon()
-    ContentUris.appendId(builder, now)
-    ContentUris.appendId(builder, endWindow)
-
-    val projection = arrayOf(
-        CalendarContract.Instances.TITLE,
-        CalendarContract.Instances.BEGIN,
-        CalendarContract.Instances.END,
-        CalendarContract.Instances.ALL_DAY
-    )
-    val sortOrder = "${CalendarContract.Instances.BEGIN} ASC"
-
-    try {
-        context.contentResolver.query(
-            builder.build(),
-            projection,
-            null,
-            null,
-            sortOrder
-        )?.use { cursor ->
-            val titleIdx = cursor.getColumnIndexOrThrow(CalendarContract.Instances.TITLE)
-            val beginIdx = cursor.getColumnIndexOrThrow(CalendarContract.Instances.BEGIN)
-            val endIdx = cursor.getColumnIndexOrThrow(CalendarContract.Instances.END)
-            val allDayIdx = cursor.getColumnIndexOrThrow(CalendarContract.Instances.ALL_DAY)
-
-            val timeFormat = SimpleDateFormat("H:mm", Locale.US)
-            val dayFormat = SimpleDateFormat("M/d", Locale.US)
-
-            val nowCal = Calendar.getInstance().apply { timeInMillis = now }
-            val currentYear = nowCal.get(Calendar.YEAR)
-            val currentMonth = nowCal.get(Calendar.MONTH)
-            val currentDay = nowCal.get(Calendar.DAY_OF_MONTH)
-            val currentDayOfYear = nowCal.get(Calendar.DAY_OF_YEAR)
-
-            // 本地今天 00:00:00 的時間戳
-            val todayStartLocal = Calendar.getInstance().apply {
-                clear()
-                set(currentYear, currentMonth, currentDay, 0, 0, 0)
-            }.timeInMillis
-
-            // Android 全天行程在底層統一以 UTC 00:00:00 記錄，計算對應的 UTC 今日時間點
-            val todayUtcMidnight = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
-                clear()
-                set(currentYear, currentMonth, currentDay, 0, 0, 0)
-            }.timeInMillis
-
-            while (cursor.moveToNext() && eventList.size < 3) {
-                val title = cursor.getString(titleIdx) ?: context.getString(R.string.event_untitled)
-                val beginMillis = cursor.getLong(beginIdx)
-                val endMillis = cursor.getLong(endIdx)
-                val isAllDay = cursor.getInt(allDayIdx) == 1
-
-                if (isAllDay) {
-                    // 全天行程的 endMillis 是結束日的隔天 00:00 UTC（Exclusive）
-                    // 若結束時間小於等於今日起點，代表昨天或更早以前就結束了，跳過
-                    if (endMillis <= todayUtcMidnight) {
-                        continue
-                    }
-
-                    // 只要「開始時間 <= 今天」且「結束時間 > 今天」，代表今天正在該多日行程中
-                    val isCoveringToday = (beginMillis <= todayUtcMidnight && endMillis > todayUtcMidnight)
-
-                    val label = if (isCoveringToday) {
-                        context.getString(R.string.event_all_day_today)
-                    } else {
-                        dayFormat.timeZone = TimeZone.getTimeZone("UTC")
-                        "${dayFormat.format(Date(beginMillis))} ${context.getString(R.string.event_all_day)}"
-                    }
-
-                    eventList.add(UpcomingCalendarEvent(title = title, timeLabel = label))
-                } else {
-                    // 非全天一般行程：已結束則跳過
-                    if (endMillis <= now) {
-                        continue
-                    }
-
-                    val eventCal = Calendar.getInstance().apply { timeInMillis = beginMillis }
-                    val isToday = (eventCal.get(Calendar.DAY_OF_YEAR) == currentDayOfYear &&
-                            eventCal.get(Calendar.YEAR) == currentYear)
-
-                    dayFormat.timeZone = TimeZone.getDefault()
-                    timeFormat.timeZone = TimeZone.getDefault()
-
-                    val label = when {
-                        // 跨天且今天仍在進行中的行程
-                        beginMillis < todayStartLocal && endMillis > now -> {
-                            context.getString(R.string.event_all_day_today)
-                        }
-                        // 今天內的行程顯示具體開始時間（如 14:00）
-                        isToday -> {
-                            timeFormat.format(Date(beginMillis))
-                        }
-                        // 明後天的行程顯示日期與時間（如 11/9 10:00）
-                        else -> {
-                            "${dayFormat.format(Date(beginMillis))} ${timeFormat.format(Date(beginMillis))}"
-                        }
-                    }
-
-                    eventList.add(UpcomingCalendarEvent(title = title, timeLabel = label))
-                }
-            }
-        }
-    } catch (e: Exception) {
-        Log.e("DeskClockCalendar", "Error querying calendar instances", e)
-    }
-
-    return eventList
-}
-
-/**
- * 非同步發送 Shell 指令至系統（如調用 cmd device_state）
- */
-fun executeShellCommand(command: String) {
-    CoroutineScope(Dispatchers.IO).launch {
-        try {
-            val process = ProcessBuilder("sh", "-c", command).start()
-            process.waitFor()
-            Log.d("FoldDeskClock", "Executed: $command")
-        } catch (e: Exception) {
-            Log.e("FoldDeskClock", "Failed: $command", e)
-        }
-    }
-}
-
-/**
  * 動態設定視窗是否延伸至螢幕挖孔/瀏海區域 (Android 9+ 有效)
  */
 fun applyDisplayCutoutMode(window: Window?, extendCutout: Boolean) {
@@ -460,375 +305,6 @@ fun applyDisplayCutoutMode(window: Window?, extendCutout: Boolean) {
         } else {
             WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_NEVER
         }
-    }
-}
-
-/**
- * 主動獲取最新定位（優先嘗試高時效快取，若無則在 Android 11+ 主動單次定位）
- */
-private fun isValidLocation(loc: Location?): Boolean {
-    if (loc == null) return false
-    return kotlin.math.abs(loc.latitude) > 0.001 || kotlin.math.abs(loc.longitude) > 0.001
-}
-
-/**
- * 主動獲取最新定位（過濾 0.0 無效座標，並支援舊版系統主動喚醒定位）
- */
-@SuppressLint("MissingPermission")
-suspend fun fetchBestLocation(context: Context): Location? = withContext(Dispatchers.IO) {
-    val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-        ?: return@withContext null
-
-    // 1. 抓取快取並過濾無效的 (0.0, 0.0) 假座標
-    val candidates = listOf(
-        LocationManager.NETWORK_PROVIDER,
-        LocationManager.GPS_PROVIDER,
-        LocationManager.PASSIVE_PROVIDER
-    ).mapNotNull { provider ->
-        try {
-            locationManager.getLastKnownLocation(provider)?.takeIf { isValidLocation(it) }
-        } catch (_: Exception) {
-            null
-        }
-    }
-    val lastLocation = candidates.maxByOrNull { it.time }
-
-    // 若有效快取在 10 分鐘內，直接返回以節省電量
-    if (lastLocation != null && (System.currentTimeMillis() - lastLocation.time) < 10 * 60 * 1000L) {
-        return@withContext lastLocation
-    }
-
-    // 2. Android 11+ (API 30+) 發起主動單次定位
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        try {
-            withTimeoutOrNull(5000L) {
-                suspendCancellableCoroutine<Location?> { cont ->
-                    val cancellationSignal = android.os.CancellationSignal()
-                    cont.invokeOnCancellation { cancellationSignal.cancel() }
-
-                    val provider = if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                        LocationManager.NETWORK_PROVIDER
-                    } else {
-                        LocationManager.GPS_PROVIDER
-                    }
-
-                    locationManager.getCurrentLocation(
-                        provider,
-                        cancellationSignal,
-                        ContextCompat.getMainExecutor(context)
-                    ) { loc ->
-                        if (cont.isActive) {
-                            cont.resume(if (isValidLocation(loc)) loc else lastLocation)
-                        }
-                    }
-                }
-            } ?: lastLocation
-        } catch (_: Exception) {
-            lastLocation
-        }
-    } else {
-        // 3. Android 5.0 ~ 10：主動註冊一次性 LocationListener 喚醒定位
-        val providers = listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
-            .filter { try { locationManager.isProviderEnabled(it) } catch (_: Exception) { false } }
-        if (providers.isEmpty()) return@withContext lastLocation
-
-        withTimeoutOrNull(6000L) {
-            suspendCancellableCoroutine<Location?> { cont ->
-                val listener = object : android.location.LocationListener {
-                    override fun onLocationChanged(location: Location) {
-                        if (!isValidLocation(location)) return // 忽略剛啟動時的 0.0 座標
-                        locationManager.removeUpdates(this)
-                        if (cont.isActive) cont.resume(location)
-                    }
-                    @Deprecated("Deprecated in Java")
-                    override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
-                    override fun onProviderEnabled(provider: String) {}
-                    override fun onProviderDisabled(provider: String) {}
-                }
-
-                try {
-                    providers.forEach { provider ->
-                        locationManager.requestLocationUpdates(
-                            provider, 0L, 0f, listener, android.os.Looper.getMainLooper()
-                        )
-                    }
-                } catch (_: Exception) {
-                    if (cont.isActive) cont.resume(lastLocation)
-                }
-
-                cont.invokeOnCancellation {
-                    try { locationManager.removeUpdates(listener) } catch (_: Exception) {}
-                }
-            }
-        } ?: lastLocation
-    }
-}
-
-/**
- * 整合抓取定位（優先真實定位 -> 歷史有效座標 -> 室內 IP 備援）、反向地理編碼與 Open-Meteo 天氣
- */
-suspend fun fetchAndApplyWeather(
-    context: Context,
-    currentLocationStr: String,
-    onResult: (WeatherInfo?) -> Unit
-) = withContext(Dispatchers.IO) {
-    try {
-        val prefs = context.getSharedPreferences("desk_clock_prefs", Context.MODE_PRIVATE)
-        val location = fetchBestLocation(context)
-
-        var lat: Double? = null
-        var lon: Double? = null
-        var detectedCity: String? = null
-
-        if (location != null && isValidLocation(location)) {
-            // 1. 成功取得硬體/系統定位，更新並持久化保存座標供室內備援使用
-            lat = location.latitude
-            lon = location.longitude
-            prefs.edit()
-                .putString("pref_last_valid_lat", lat.toString())
-                .putString("pref_last_valid_lon", lon.toString())
-                .apply()
-        } else {
-            // 2. 室內無法取得即時定位時，優先沿用上一次儲存的真實座標
-            val savedLat = prefs.getString("pref_last_valid_lat", null)?.toDoubleOrNull()
-            val savedLon = prefs.getString("pref_last_valid_lon", null)?.toDoubleOrNull()
-            if (savedLat != null && savedLon != null) {
-                lat = savedLat
-                lon = savedLon
-            } else {
-                // 3. 若該裝置從未取得過任何定位，才使用 IP 定位備援
-                val ipLoc = fetchIpLocationFallback()
-                if (ipLoc != null) {
-                    lat = ipLoc.first
-                    lon = ipLoc.second
-                    detectedCity = ipLoc.third
-                }
-            }
-        }
-
-        val finalLat = lat ?: 24.838
-        val finalLon = lon ?: 121.017
-
-        val langTag = if (currentAppLocaleTag == "system") {
-            getSystemDefaultLocale().toLanguageTag()
-        } else {
-            currentAppLocaleTag
-        }
-
-        // 1. 優先嘗試 Android 原生 Geocoder（僅取城市、縣市、鄉鎮區層級，不取省/州級 adminArea）
-        try {
-            val geocoder = Geocoder(context, Locale.getDefault())
-            @Suppress("DEPRECATION")
-            val addresses = geocoder.getFromLocation(finalLat, finalLon, 1)
-            if (!addresses.isNullOrEmpty()) {
-                val addr = addresses[0]
-                val geoCity = addr.locality
-                    ?: addr.subAdminArea
-                    ?: addr.subLocality
-                if (!geoCity.isNullOrBlank()) {
-                    detectedCity = geoCity.trim()
-                }
-            }
-        } catch (_: Exception) {
-            // 舊版 GMS 服務異常時略過
-        }
-
-        // 2. 若仍無具體城市名稱，使用線上反向地理編碼取得 Level 5~8 行政區
-        if (detectedCity.isNullOrBlank()) {
-            detectedCity = fetchCityNameFallback(finalLat, finalLon, langTag)
-        }
-
-        val finalCityName = detectedCity?.takeIf { it.isNotBlank() } ?: currentLocationStr
-        val data = fetchOpenMeteoWeather(finalLat, finalLon, finalCityName)
-        withContext(Dispatchers.Main) {
-            onResult(data)
-        }
-    } catch (e: Exception) {
-        Log.e("DeskClockWeather", "Failed to fetch and apply weather", e)
-    }
-}
-
-/**
- * 室內 IP 定位備援（僅讀取 city 欄位，不退回讀取省/州級 regionName）
- */
-private fun fetchIpLocationFallback(): Triple<Double, Double, String?>? {
-    return try {
-        val conn = (URL("http://ip-api.com/json/?fields=status,city,lat,lon").openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = 5000
-            readTimeout = 5000
-            connect()
-        }
-        val text = conn.inputStream.bufferedReader().use { it.readText() }
-        val json = JSONObject(text)
-        if (json.optString("status") == "success") {
-            val lat = json.getDouble("lat")
-            val lon = json.getDouble("lon")
-            val city = json.optString("city", "").trim().takeIf { it.isNotBlank() }
-            Triple(lat, lon, city)
-        } else {
-            null
-        }
-    } catch (_: Exception) {
-        null
-    }
-}
-
-/**
- * 線上反向地理編碼備援（嚴格限定為城市／鄉鎮區層級，排除國家與一級省州層級）
- */
-private fun fetchCityNameFallback(lat: Double, lon: Double, languageTag: String): String? {
-    return try {
-        val urlStr = "https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=$lat&longitude=$lon&localityLanguage=$languageTag"
-        val connection = try {
-            (URL(urlStr).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 6000
-                readTimeout = 6000
-                connect()
-            }
-        } catch (e: javax.net.ssl.SSLException) {
-            val httpUrlStr = urlStr.replaceFirst("https://", "http://")
-            (URL(httpUrlStr).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 6000
-                readTimeout = 6000
-                connect()
-            }
-        }
-
-        val responseText = connection.inputStream.bufferedReader().use { it.readText() }
-        val json = JSONObject(responseText)
-
-        val countryName = json.optString("countryName", "").trim()
-        val subdivision = json.optString("principalSubdivision", "").trim()
-
-        // 1. 優先讀取具體城市或鄉鎮市區欄位，並確保不與國家或一級省州名稱重複
-        val directCity = listOf(
-            json.optString("locality", "").trim(),
-            json.optString("city", "").trim()
-        ).firstOrNull { it.isNotBlank() && it != countryName && it != subdivision }
-
-        if (directCity != null) return directCity
-
-        // 2. 從 administrative 陣列中嚴格篩選 adminLevel 5~8（縣市、區、鄉鎮層級）
-        val adminArray = json.optJSONObject("localityInfo")?.optJSONArray("administrative")
-        if (adminArray != null) {
-            for (i in adminArray.length() - 1 downTo 0) {
-                val item = adminArray.optJSONObject(i) ?: continue
-                val level = item.optInt("adminLevel", 0)
-                if (level in 5..8) {
-                    val candidate = item.optString("name", "").trim()
-                    if (candidate.isNotBlank() && candidate != countryName && candidate != subdivision) {
-                        return candidate
-                    }
-                }
-            }
-        }
-
-        // 若無法精確解析到城市層級，回傳 null 交由上層顯示「目前位置 / 現在地」
-        null
-    } catch (_: Exception) {
-        null
-    }
-}
-
-/**
- * 查詢 Open-Meteo 天氣預報 API 並解析（含連線容錯與 HTTP 備援）
- */
-suspend fun fetchOpenMeteoWeather(lat: Double, lon: Double, cityName: String): WeatherInfo? = withContext(Dispatchers.IO) {
-    // 加上 forecast_days=2 只抓今明兩天（48小時），大幅縮小封包體積並加快回應速度
-    val httpsUrl = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code&hourly=temperature_2m,weather_code&forecast_days=2&timezone=auto"
-    val httpUrl = httpsUrl.replaceFirst("https://", "http://")
-
-    fun requestJson(targetUrl: String, timeoutMs: Int): String {
-        val conn = (URL(targetUrl).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = timeoutMs
-            readTimeout = timeoutMs
-            useCaches = false
-            // 避免重複使用可能已半斷線的 Keep-Alive Socket，確保每次手動重整都建立全新連線
-            setRequestProperty("Connection", "close")
-            setRequestProperty("User-Agent", "LinzinDeskClock-Android")
-        }
-        try {
-            val code = conn.responseCode
-            if (code !in 200..299) {
-                throw java.io.IOException("HTTP error code: $code")
-            }
-            return conn.inputStream.bufferedReader().use { it.readText() }
-        } finally {
-            conn.disconnect()
-        }
-    }
-
-    try {
-        // 1. 先嘗試 HTTPS（6 秒逾時，避免握手卡死拖太久）
-        // 2. 無論是憑證過期 (SSLException) 或握手逾時 (SocketTimeoutException)，皆立即改走 HTTP 備援
-        val responseText = try {
-            requestJson(httpsUrl, timeoutMs = 6000)
-        } catch (e: Exception) {
-            Log.w("DeskClockWeather", "HTTPS failed (${e.javaClass.simpleName}), retrying via HTTP...")
-            requestJson(httpUrl, timeoutMs = 8000)
-        }
-
-        val root = JSONObject(responseText)
-
-        val currentObj = root.getJSONObject("current")
-        val currentTemp = currentObj.getDouble("temperature_2m").toFloat()
-        val currentCode = currentObj.getInt("weather_code")
-
-        val hourlyObj = root.getJSONObject("hourly")
-        val times = hourlyObj.getJSONArray("time")
-        val temps = hourlyObj.getJSONArray("temperature_2m")
-        val codes = hourlyObj.getJSONArray("weather_code")
-
-        val nowCal = Calendar.getInstance()
-        val currentHourInt = nowCal.get(Calendar.HOUR_OF_DAY)
-
-        val hourlyResult = mutableListOf<HourlyWeather>()
-        val inFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm", Locale.US)
-
-        for (i in 0 until times.length()) {
-            val tStr = times.getString(i)
-            val date = inFormat.parse(tStr)
-            if (date != null) {
-                val cal = Calendar.getInstance().apply { time = date }
-                if (cal.get(Calendar.HOUR_OF_DAY) >= currentHourInt && cal.get(Calendar.DAY_OF_YEAR) == nowCal.get(Calendar.DAY_OF_YEAR)) {
-                    val hour = cal.get(Calendar.HOUR_OF_DAY)
-                    val t = temps.getDouble(i).toFloat()
-                    val c = codes.getInt(i)
-                    hourlyResult.add(HourlyWeather(hourOfDay = hour, tempC = t, weatherCode = c))
-                    if (hourlyResult.size == 4) break
-                }
-            }
-        }
-
-        var fallbackIdx = 0
-        while (hourlyResult.size < 4 && fallbackIdx < times.length()) {
-            val tStr = times.getString(fallbackIdx)
-            val date = inFormat.parse(tStr)
-            if (date != null) {
-                val cal = Calendar.getInstance().apply { time = date }
-                val hour = cal.get(Calendar.HOUR_OF_DAY)
-                val t = temps.getDouble(fallbackIdx).toFloat()
-                val c = codes.getInt(fallbackIdx)
-                if (hourlyResult.none { it.hourOfDay == hour }) {
-                    hourlyResult.add(HourlyWeather(hourOfDay = hour, tempC = t, weatherCode = c))
-                }
-            }
-            fallbackIdx++
-        }
-
-        WeatherInfo(
-            cityName = cityName,
-            currentTempC = currentTemp,
-            currentWeatherCode = currentCode,
-            hourlyList = hourlyResult
-        )
-    } catch (e: Exception) {
-        Log.e("DeskClockWeather", "Failed to fetch Open-Meteo", e)
-        null
     }
 }
 
@@ -3636,9 +3112,6 @@ fun DeskClockScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         showCalendarEvents = isGranted
-        if (isGranted) {
-            calendarEventsList = fetchUpcomingCalendarEvents(context)
-        }
     }
 
     var isUiLocked by rememberSaveable { mutableStateOf(false) }
@@ -3706,57 +3179,28 @@ fun DeskClockScreen(
         }
     }
 
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner, weatherEnabled, layoutMode) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-                val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-
-                // 當擁有權限、在雙區塊模式且功能已開啟但目前無資料時觸發刷新
-                if ((hasFine || hasCoarse) && weatherEnabled && layoutMode != ClockLayoutMode.SINGLE && weatherInfo == null) {
-                    CoroutineScope(Dispatchers.IO).launch {
-                        fetchAndApplyWeather(context, currentLocationStr) { data ->
-                            if (data != null) {
-                                weatherInfo = data
-                            }
-                            isWeatherRefreshing = false
-                        }
-                    }
-                }
+    val weatherRequest = WeatherRequestInput(
+        languageTag = if (currentAppLocaleTag == "system") getSystemDefaultLocale().toLanguageTag() else currentAppLocaleTag,
+        locationLabel = currentLocationStr,
+        locationRevision = locationTrigger
+    )
+    val weatherOwner = rememberWeatherRefreshOwner(
+        enabled = weatherEnabled && layoutMode != ClockLayoutMode.SINGLE,
+        input = weatherRequest,
+        permissionLevel = {
+            when {
+                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED -> 2
+                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED -> 1
+                else -> 0
             }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
-
-    // 天氣更新：僅在雙區塊模式且功能開啟時在背景輪詢以省電
-    LaunchedEffect(weatherEnabled, layoutMode, locationTrigger) {
-        val isDualLayout = (layoutMode != ClockLayoutMode.SINGLE)
-
-        if (weatherEnabled && isDualLayout) {
-            val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-            val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-
-            if (hasFine || hasCoarse) {
-                while (true) {
-                    isWeatherRefreshing = true
-                    fetchAndApplyWeather(context, currentLocationStr) { data ->
-                        weatherInfo = data
-                        isWeatherRefreshing = false
-                    }
-                    isWeatherRefreshing = false
-                    delay(30 * 60 * 1000L)
-                }
-            } else {
-                locationPermissionLauncher.launch(
-                    arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
-                )
-            }
-        }
-    }
+        },
+        onPermissionNeeded = {
+            locationPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+        },
+        load = { request -> loadWeather(context, request.locationLabel, request.languageTag) },
+        onResult = { weatherInfo = weatherAfterRefresh(weatherInfo, it) },
+        onRefreshing = { isWeatherRefreshing = it }
+    )
 
     // 行程更新：僅在雙區塊模式且功能開啟時定時背景查詢
     LaunchedEffect(showCalendarEvents, layoutMode) {
@@ -3950,7 +3394,7 @@ fun DeskClockScreen(
                             weatherEnabled = weatherEnabled,
                             weatherInfo = weatherInfo,
                             isWeatherRefreshing = isWeatherRefreshing,
-                            onRefreshWeather = { locationTrigger++ },
+                            onRefreshWeather = { weatherOwner.refresh() },
                             isFahrenheit = isFahrenheit,
                             is24Hour = is24Hour,
                             isUiLocked = isUiLocked,
@@ -3977,7 +3421,7 @@ fun DeskClockScreen(
                             weatherEnabled = weatherEnabled,
                             weatherInfo = weatherInfo,
                             isWeatherRefreshing = isWeatherRefreshing,
-                            onRefreshWeather = { locationTrigger++ },
+                            onRefreshWeather = { weatherOwner.refresh() },
                             isFahrenheit = isFahrenheit,
                             is24Hour = is24Hour,
                             isUiLocked = isUiLocked,
@@ -4124,7 +3568,6 @@ fun DeskClockScreen(
                         ) == PackageManager.PERMISSION_GRANTED
                         if (hasCalPerm) {
                             showCalendarEvents = true
-                            calendarEventsList = fetchUpcomingCalendarEvents(context)
                         } else {
                             calendarPermissionLauncher.launch(Manifest.permission.READ_CALENDAR)
                         }
@@ -4680,6 +4123,8 @@ fun SideWeatherWidget(
                         fontWeight = FontWeight.Bold
                     )
                 }
+
+                WeatherStatusLabels(weatherInfo, isRefreshing, onRefresh)
 
                 BoxWithConstraints(
                     modifier = Modifier
@@ -6109,24 +5554,60 @@ class MainActivity : ComponentActivity(), SensorEventListener {
         }
     }
 
-    /**
-     * 安全釋放全域覆寫鎖定 (Reset Device State)
-     * 針對 HONOR (MagicOS) 採用雙重間隔補發機制以確保退出鎖死
-     */
-    private fun safelyResetDeviceState() {
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val p1 = ProcessBuilder("sh", "-c", "cmd device_state state reset").start()
-                p1.waitFor()
-                Log.d("FoldDeskClock", "Executed: cmd device_state state reset")
+    private val deviceStateScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val deviceStateOwner = Any()
+    private var deviceStateJob: Job? = null
+    private var deviceStateGeneration = 0L
+    private var deviceStateMayBeOverridden = false
+    private var deviceStateDestroyed = false
 
-                if (isHonorDevice) {
-                    delay(120L)
-                    val p2 = ProcessBuilder("sh", "-c", "cmd device_state state reset").start()
-                    p2.waitFor()
+    private fun reportDeviceStateResetFailure() {
+        Log.w("FoldDeskClock", "Device state restoration could not be confirmed")
+        Toast.makeText(applicationContext, R.string.display_reset_failed, Toast.LENGTH_LONG).show()
+    }
+
+    private fun requestRearDisplayState() {
+        if (deviceStateDestroyed) return
+        val ticket = ++deviceStateGeneration
+        deviceStateJob?.cancel()
+        isRearDisplayActive = false
+        deviceStateJob = deviceStateScope.launch {
+            var resetFailed = false
+            val confirmed = DeviceStateTransitions.request(deviceStateOwner) {
+                deviceStateMayBeOverridden = true
+                switchAndConfirmDeviceState(targetStateId, repeatReset = isHonorDevice,
+                    onResetFailure = { resetFailed = true; reportDeviceStateResetFailure() })
+            }
+            if (ticket == deviceStateGeneration) {
+                isRearDisplayActive = confirmed
+                if (!confirmed) {
+                    deviceStateMayBeOverridden = resetFailed
+                    if (!resetFailed) Toast.makeText(applicationContext,
+                        R.string.display_switch_unavailable, Toast.LENGTH_LONG).show()
                 }
-            } catch (e: Exception) {
-                Log.e("FoldDeskClock", "Failed to reset device state", e)
+            }
+        }
+    }
+
+    private fun safelyResetDeviceState(finalCleanup: Boolean = false) {
+        if (deviceStateDestroyed) return
+        if (finalCleanup) deviceStateDestroyed = true
+        val ticket = ++deviceStateGeneration
+        deviceStateJob?.cancel()
+        isRearDisplayActive = false
+        if (!deviceStateMayBeOverridden) {
+            if (finalCleanup) deviceStateScope.cancel()
+            return
+        }
+        deviceStateJob = deviceStateScope.launch {
+            try {
+                val restored = DeviceStateTransitions.release(deviceStateOwner) { resetAndConfirmDeviceState(repeatReset = isHonorDevice) }
+                if (ticket == deviceStateGeneration) {
+                    deviceStateMayBeOverridden = !restored
+                    if (!restored) reportDeviceStateResetFailure()
+                }
+            } finally {
+                if (finalCleanup) deviceStateScope.cancel()
             }
         }
     }
@@ -6387,7 +5868,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     override fun onDestroy() {
         super.onDestroy()
         setImmersiveMode(window, false)
-        safelyResetDeviceState()
+        safelyResetDeviceState(finalCleanup = true)
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
@@ -6445,8 +5926,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
                     val needsStateOverride = !isTallAspectRatio() || !isRearDisplayActive
                     if (needsStateOverride) {
-                        isRearDisplayActive = true
-                        executeShellCommand("cmd device_state state $targetStateId")
+                        requestRearDisplayState()
                     }
 
                     triggerImmersiveCleanUp()
